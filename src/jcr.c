@@ -21,8 +21,10 @@ void init_jcr(char *path) {
 		jcr.path = sdscat(jcr.path, "/");
 
 	jcr.bv = NULL;
+	jcr.new_bv = NULL;
 
 	jcr.id = TEMPORARY_ID;
+	jcr.new_id = TEMPORARY_ID;
 
     jcr.status = JCR_STATUS_INIT;
 
@@ -83,4 +85,20 @@ void init_restore_jcr(int revision, char *path) {
 	}
 
 	jcr.id = revision;
+}
+
+void init_update_jcr(int revision, char *path) {
+
+	init_jcr(path);
+
+	jcr.bv = open_backup_version(revision);
+	jcr.new_bv = create_backup_version(jcr.path);
+
+	if(jcr.bv->deleted == 1){
+		WARNING("The backup has been deleted!");
+		exit(1);
+	}
+
+	jcr.id = revision;
+	jcr.new_id = jcr.new_bv->bv_num;
 }

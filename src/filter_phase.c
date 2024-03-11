@@ -30,6 +30,12 @@ extern struct {
 static void* filter_thread(void *arg) {
     int enable_rewrite = 1;
     struct fileRecipeMeta* r = NULL;
+    struct backupVersion* bv = NULL;
+    if (job == DESTOR_UPDATE) {
+        bv = jcr.new_bv;
+    } else {
+        bv = jcr.bv;
+    }
 
     while (1) {
         struct chunk* c = sync_queue_pop(rewrite_queue);
@@ -209,7 +215,7 @@ static void* filter_thread(void *arg) {
         int full = index_update_buffer(s);
 
         /* Write a SEGMENT_BEGIN */
-        segmentid sid = append_segment_flag(jcr.bv, CHUNK_SEGMENT_START, s->chunk_num);
+        segmentid sid = append_segment_flag(bv, CHUNK_SEGMENT_START, s->chunk_num);
 
         /* Write recipe */
     	iter = g_sequence_get_begin_iter(s->chunks);
@@ -226,7 +232,7 @@ static void* filter_thread(void *arg) {
         		assert(cp.id>=0);
         		memcpy(&cp.fp, &c->fp, sizeof(fingerprint));
         		cp.size = c->size;
-        		append_n_chunk_pointers(jcr.bv, &cp ,1);
+        		append_n_chunk_pointers(bv, &cp ,1);
         		r->chunknum++;
         		r->filesize += c->size;
 
@@ -235,7 +241,7 @@ static void* filter_thread(void *arg) {
 
         	}else{
         		assert(CHECK_CHUNK(c,CHUNK_FILE_END));
-        		append_file_recipe_meta(jcr.bv, r);
+        		append_file_recipe_meta(bv, r);
         		free_file_recipe_meta(r);
         		r = NULL;
 
@@ -244,7 +250,7 @@ static void* filter_thread(void *arg) {
         }
 
        	/* Write a SEGMENT_END */
-       	append_segment_flag(jcr.bv, CHUNK_SEGMENT_END, 0);
+       	append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
 
         if(destor.index_category[1] == INDEX_CATEGORY_LOGICAL_LOCALITY){
              /*

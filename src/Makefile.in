@@ -105,15 +105,15 @@ am__v_AR_1 =
 libdestor_a_AR = $(AR) $(ARFLAGS)
 libdestor_a_LIBADD =
 am_libdestor_a_OBJECTS = destor.$(OBJEXT) jcr.$(OBJEXT) \
-	config.$(OBJEXT) do_backup.$(OBJEXT) read_phase.$(OBJEXT) \
-	chunk_phase.$(OBJEXT) hash_phase.$(OBJEXT) \
-	trace_phase.$(OBJEXT) dedup_phase.$(OBJEXT) \
-	rewrite_phase.$(OBJEXT) filter_phase.$(OBJEXT) \
-	cfl_rewrite.$(OBJEXT) cap_rewrite.$(OBJEXT) \
-	cbr_rewrite.$(OBJEXT) har_rewrite.$(OBJEXT) \
-	restore_aware.$(OBJEXT) do_restore.$(OBJEXT) \
-	optimal_restore.$(OBJEXT) assembly_restore.$(OBJEXT) \
-	cma.$(OBJEXT) do_delete.$(OBJEXT)
+	config.$(OBJEXT) do_backup.$(OBJEXT) do_update.$(OBJEXT) \
+	read_phase.$(OBJEXT) chunk_phase.$(OBJEXT) \
+	hash_phase.$(OBJEXT) trace_phase.$(OBJEXT) \
+	dedup_phase.$(OBJEXT) rewrite_phase.$(OBJEXT) \
+	filter_phase.$(OBJEXT) cfl_rewrite.$(OBJEXT) \
+	cap_rewrite.$(OBJEXT) cbr_rewrite.$(OBJEXT) \
+	har_rewrite.$(OBJEXT) restore_aware.$(OBJEXT) \
+	do_restore.$(OBJEXT) optimal_restore.$(OBJEXT) \
+	assembly_restore.$(OBJEXT) cma.$(OBJEXT) do_delete.$(OBJEXT)
 libdestor_a_OBJECTS = $(am_libdestor_a_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -261,7 +261,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 noinst_LIBRARIES = libdestor.a
-libdestor_a_SOURCES = destor.c jcr.c config.c do_backup.c read_phase.c chunk_phase.c hash_phase.c trace_phase.c dedup_phase.c rewrite_phase.c filter_phase.c cfl_rewrite.c cap_rewrite.c cbr_rewrite.c har_rewrite.c restore_aware.c do_restore.c optimal_restore.c assembly_restore.c cma.c do_delete.c
+libdestor_a_SOURCES = destor.c jcr.c config.c do_backup.c do_update.c read_phase.c chunk_phase.c hash_phase.c trace_phase.c dedup_phase.c rewrite_phase.c filter_phase.c cfl_rewrite.c cap_rewrite.c cbr_rewrite.c har_rewrite.c restore_aware.c do_restore.c optimal_restore.c assembly_restore.c cma.c do_delete.c
 all: all-am
 
 .SUFFIXES:
@@ -322,6 +322,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/do_backup.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/do_delete.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/do_restore.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/do_update.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/filter_phase.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/har_rewrite.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/hash_phase.Po@am__quote@

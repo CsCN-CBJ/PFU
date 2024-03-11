@@ -25,7 +25,8 @@ void init_har() {
 			g_int64_equal, NULL, free);
 
 	/* The first backup doesn't have inherited sparse containers. */
-	if (jcr.id > 0) {
+	/* The update backup is as the same */
+	if (jcr.id > 0 && job != DESTOR_UPDATE) {
 
 		sds fname = sdsdup(destor.working_directory);
 		fname = sdscat(fname, "recipes/bv");

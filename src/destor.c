@@ -13,6 +13,7 @@
 extern void do_backup(char *path);
 //extern void do_delete(int revision);
 extern void do_restore(int revision, char *path);
+extern void do_update(int revision, char *path);
 void do_delete(int jobid);
 extern void make_trace(char *raw_files);
 
@@ -22,7 +23,7 @@ extern void load_config_from_string(sds config);
 /* : means argument is required.
  * :: means argument is required and no space.
  */
-const char * const short_options = "sr::t::p::h";
+const char * const short_options = "sr::n::u::t::p::h";
 
 struct option long_options[] = {
 		{ "state", 0, NULL, 's' },
@@ -38,6 +39,12 @@ void usage() {
 	puts("\tstart a restore job");
 	puts("\t\tdestor -r<JOB_ID> /path/to/restore -p\"a line in config file\"");
 
+	puts("\tstart a sha256 restore job");
+	puts("\t\tdestor -n<JOB_ID> /path/to/restore -p\"a line in config file\"");
+
+	puts("\tstart a update job");
+	puts("\t\tdestor -u<JOB_ID> /path/to/data(useless) -p\"a line in config file\"");
+
 	puts("\tprint state of destor");
 	puts("\t\tdestor -s");
 
@@ -52,6 +59,7 @@ void usage() {
 	exit(0);
 }
 
+FILE *log_fp;
 void destor_log(int level, const char *fmt, ...) {
 	va_list ap;
 	char msg[DESTOR_MAX_LOGMSG_LEN];
@@ -63,6 +71,9 @@ void destor_log(int level, const char *fmt, ...) {
 	vsnprintf(msg, sizeof(msg), fmt, ap);
 	va_end(ap);
 
+	// TODO: 可能影响性能
+	fprintf(log_fp, "%s\n", msg);
+	fflush(log_fp);
 	fprintf(stdout, "%s\n", msg);
 }
 
@@ -96,7 +107,7 @@ void destor_start() {
 	destor.index_category[1] = INDEX_CATEGORY_PHYSICAL_LOCALITY;
 	destor.index_specific = INDEX_SPECIFIC_NO;
 	destor.index_key_value_store = INDEX_KEY_VALUE_HTABLE;
-	destor.index_key_size = 20;
+	destor.index_key_size = 32;
     destor.index_value_length = 1;
     
 	destor.index_cache_size = 4096;
@@ -263,8 +274,9 @@ void destor_stat() {
 int main(int argc, char **argv) {
 
 	destor_start();
+	log_fp = fopen("/home/cbj/destor/destor.log", "a");
 
-	int job = DESTOR_BACKUP;
+	job = DESTOR_BACKUP;
 	int revision = -1;
 
 	int opt = 0;
@@ -273,6 +285,14 @@ int main(int argc, char **argv) {
 		switch (opt) {
 		case 'r':
 			job = DESTOR_RESTORE;
+			revision = atoi(optarg);
+			break;
+		case 'n':
+			job = DESTOR_NEW_RESTORE;
+			revision = atoi(optarg);
+			break;
+		case 'u':
+			job = DESTOR_UPDATE;
 			revision = atoi(optarg);
 			break;
 		case 's':
@@ -296,6 +316,7 @@ int main(int argc, char **argv) {
 
 	sds path = NULL;
 
+	destor_log(DESTOR_NOTICE, "job type: %d", job);
 	switch (job) {
 	case DESTOR_BACKUP:
 
@@ -322,6 +343,7 @@ int main(int argc, char **argv) {
 
 		break;
 	case DESTOR_RESTORE:
+	case DESTOR_NEW_RESTORE:
 		if (revision < 0) {
 			fprintf(stderr, "A job id is required!\n");
 			usage();
@@ -334,6 +356,22 @@ int main(int argc, char **argv) {
 		}
 
 		do_restore(revision, path[0] == 0 ? 0 : path);
+
+		sdsfree(path);
+		break;
+	case DESTOR_UPDATE:
+		if (revision < 0) {
+			fprintf(stderr, "A job id is required!\n");
+			usage();
+		}
+		if (argc > optind) {
+			path = sdsnew(argv[optind]);
+		} else {
+			fprintf(stderr, "A target directory is required!\n");
+			usage();
+		}
+
+		do_update(revision, path[0] == 0 ? 0 : path);
 
 		sdsfree(path);
 		break;
@@ -354,6 +392,7 @@ int main(int argc, char **argv) {
 		usage();
 	}
 	destor_shutdown();
+	fclose(log_fp);
 
 	return 0;
 }

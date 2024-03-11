@@ -39,10 +39,13 @@
 
 #define DESTOR_CONFIGLINE_MAX 1024
 
+int job;
 #define DESTOR_BACKUP 1
 #define DESTOR_RESTORE 2
 #define DESTOR_MAKE_TRACE 3
 #define DESTOR_DELETE 4
+#define DESTOR_UPDATE 5
+#define DESTOR_NEW_RESTORE 6
 
 /* Log levels */
 #define DESTOR_DEBUG 0
@@ -280,7 +283,7 @@ struct destor {
 
 } destor;
 
-typedef unsigned char fingerprint[20];
+typedef unsigned char fingerprint[32];
 typedef int64_t containerid; //container id
 typedef int64_t segmentid;
 

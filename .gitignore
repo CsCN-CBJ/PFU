@@ -6,3 +6,15 @@ Makefile
 .deps
 tags
 destor
+
+log/
+temp*
+.idea/
+build/
+.vscode/
+__pycache__/
+
+*.log
+config.status
+autom4te.cache/
+Makefile.in

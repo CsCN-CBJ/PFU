@@ -2,11 +2,12 @@
 #include "../utils/serial.h"
 #include "../utils/sync_queue.h"
 #include "../jcr.h"
+#include "../destor.h"
 
 static int64_t container_count = 0;
-static FILE* fp;
+static FILE *old_fp, *new_fp;
 /* Control the concurrent accesses to fp. */
-static pthread_mutex_t mutex;
+static pthread_mutex_t old_mutex, new_mutex;
 
 static pthread_t append_t;
 
@@ -44,23 +45,41 @@ static void* append_thread(void *arg) {
 }
 
 void init_container_store() {
+	/**
+	 * DESTOR_UPDATE: read container.pool, open container.pool_new
+	 * DESTOR_NEW_RESTORE: read container.pool_new
+	 * default: open container.pool
+	*/
 
 	sds containerfile = sdsdup(destor.working_directory);
 	containerfile = sdscat(containerfile, "/container.pool");
+	if (job == DESTOR_NEW_RESTORE) {
+		containerfile = sdscat(containerfile, "_new");
+	}
 
-	if ((fp = fopen(containerfile, "r+"))) {
-		fread(&container_count, 8, 1, fp);
-	} else if (!(fp = fopen(containerfile, "w+"))) {
+	if ((old_fp = fopen(containerfile, "r+"))) {
+		fread(&container_count, 8, 1, old_fp);
+	} else if (!(old_fp = fopen(containerfile, "w+"))) {
 		perror(
 				"Can not create container.pool for read and write because");
 		exit(1);
+	}
+
+	if (job == DESTOR_UPDATE) {
+		containerfile = sdscat(containerfile, "_new");
+		container_count = 0;
+		if (!(new_fp = fopen(containerfile, "w+"))) {
+			perror("Can not create container.pool_new for read and write because");
+			exit(1);
+		}
 	}
 
 	sdsfree(containerfile);
 
 	container_buffer = sync_queue_new(25);
 
-	pthread_mutex_init(&mutex, NULL);
+	pthread_mutex_init(&old_mutex, NULL);
+	pthread_mutex_init(&new_mutex, NULL);
 
 	pthread_create(&append_t, NULL, append_thread, NULL);
 
@@ -68,6 +87,8 @@ void init_container_store() {
 }
 
 void close_container_store() {
+	FILE *fp = job == DESTOR_UPDATE ? new_fp : old_fp;
+
 	sync_queue_term(container_buffer);
 
 	pthread_join(append_t, NULL);
@@ -77,9 +98,13 @@ void close_container_store() {
 	fwrite(&container_count, sizeof(container_count), 1, fp);
 
 	fclose(fp);
+	if (job == DESTOR_UPDATE) {
+		fclose(old_fp);
+	}
 	fp = NULL;
 
-	pthread_mutex_destroy(&mutex);
+	pthread_mutex_destroy(&old_mutex);
+	pthread_mutex_destroy(&new_mutex);
 }
 
 static void init_container_meta(struct containerMeta *meta) {
@@ -128,6 +153,8 @@ void write_container_async(struct container* c) {
  * Called by Append phase
  */
 void write_container(struct container* c) {
+	FILE *fp = job == DESTOR_UPDATE ? new_fp : old_fp;
+	pthread_mutex_t *mutex = job == DESTOR_UPDATE ? &new_mutex : &old_mutex;
 
 	assert(c->meta.chunk_num == g_hash_table_size(c->meta.map));
 
@@ -164,7 +191,7 @@ void write_container(struct container* c) {
 
 		ser_end(cur, CONTAINER_META_SIZE);
 
-		pthread_mutex_lock(&mutex);
+		pthread_mutex_lock(mutex);
 
 		if (fseek(fp, c->meta.id * CONTAINER_SIZE + 8, SEEK_SET) != 0) {
 			perror("Fail seek in container store.");
@@ -175,7 +202,7 @@ void write_container(struct container* c) {
 			exit(1);
 		}
 
-		pthread_mutex_unlock(&mutex);
+		pthread_mutex_unlock(mutex);
 	} else {
 		char buf[CONTAINER_META_SIZE];
 		memset(buf, 0, CONTAINER_META_SIZE);
@@ -198,7 +225,7 @@ void write_container(struct container* c) {
 
 		ser_end(buf, CONTAINER_META_SIZE);
 
-		pthread_mutex_lock(&mutex);
+		pthread_mutex_lock(mutex);
 
 		if(fseek(fp, c->meta.id * CONTAINER_META_SIZE + 8, SEEK_SET) != 0){
 			perror("Fail seek in container store.");
@@ -209,12 +236,14 @@ void write_container(struct container* c) {
 			exit(1);
 		}
 
-		pthread_mutex_unlock(&mutex);
+		pthread_mutex_unlock(mutex);
 	}
 
 }
 
 struct container* retrieve_container_by_id(containerid id) {
+	FILE *fp = old_fp;
+	pthread_mutex_t *mutex = &old_mutex;
 	struct container *c = (struct container*) malloc(sizeof(struct container));
 
 	init_container_meta(&c->meta);
@@ -223,7 +252,7 @@ struct container* retrieve_container_by_id(containerid id) {
 	if (destor.simulation_level >= SIMULATION_RESTORE) {
 		c->data = malloc(CONTAINER_META_SIZE);
 
-		pthread_mutex_lock(&mutex);
+		pthread_mutex_lock(mutex);
 
 		if (destor.simulation_level >= SIMULATION_APPEND)
 			fseek(fp, id * CONTAINER_META_SIZE + 8, SEEK_SET);
@@ -233,18 +262,18 @@ struct container* retrieve_container_by_id(containerid id) {
 
 		fread(c->data, CONTAINER_META_SIZE, 1, fp);
 
-		pthread_mutex_unlock(&mutex);
+		pthread_mutex_unlock(mutex);
 
 		cur = c->data;
 	} else {
 		c->data = malloc(CONTAINER_SIZE);
 
-		pthread_mutex_lock(&mutex);
+		pthread_mutex_lock(mutex);
 
 		fseek(fp, id * CONTAINER_SIZE + 8, SEEK_SET);
 		fread(c->data, CONTAINER_SIZE, 1, fp);
 
-		pthread_mutex_unlock(&mutex);
+		pthread_mutex_unlock(mutex);
 
 		cur = &c->data[CONTAINER_SIZE - CONTAINER_META_SIZE];
 	}
@@ -304,6 +333,8 @@ static struct containerMeta* container_meta_duplicate(struct container *c) {
 }
 
 struct containerMeta* retrieve_container_meta_by_id(containerid id) {
+	FILE *fp = old_fp;
+	pthread_mutex_t *mutex = &old_mutex;
 	struct containerMeta* cm = NULL;
 
 	/* First, we find it in the buffer */
@@ -318,7 +349,7 @@ struct containerMeta* retrieve_container_meta_by_id(containerid id) {
 
 	unsigned char buf[CONTAINER_META_SIZE];
 
-	pthread_mutex_lock(&mutex);
+	pthread_mutex_lock(mutex);
 
 	if (destor.simulation_level >= SIMULATION_APPEND)
 		fseek(fp, id * CONTAINER_META_SIZE + 8, SEEK_SET);
@@ -328,7 +359,7 @@ struct containerMeta* retrieve_container_meta_by_id(containerid id) {
 
 	fread(buf, CONTAINER_META_SIZE, 1, fp);
 
-	pthread_mutex_unlock(&mutex);
+	pthread_mutex_unlock(mutex);
 
 	unser_declare;
 	unser_begin(buf, CONTAINER_META_SIZE);
@@ -383,7 +414,7 @@ int container_overflow(struct container* c, int32_t size) {
 	/*
 	 * 28 is the size of metaEntry.
 	 */
-	if ((c->meta.chunk_num + 1) * 28 + 16 > CONTAINER_META_SIZE)
+	if ((c->meta.chunk_num + 1) * sizeof(struct metaEntry) + 16 > CONTAINER_META_SIZE)
 		return 1;
 	return 0;
 }

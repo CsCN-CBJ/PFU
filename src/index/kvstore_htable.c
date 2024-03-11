@@ -71,7 +71,8 @@ void init_kvstore_htable(){
 
 	/* Initialize the feature index from the dump file. */
 	FILE *fp;
-	if ((fp = fopen(indexpath, "r"))) {
+	// 当UPDATE时，不需要读取htable(重置index)
+	if (job != DESTOR_UPDATE && (fp = fopen(indexpath, "r"))) {
 		/* The number of features */
 		int key_num;
 		fread(&key_num, sizeof(int), 1, fp);
