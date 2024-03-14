@@ -261,7 +261,7 @@ void do_restore(int revision, char *path) {
 			jcr.write_chunk_time / 1000000,
 			jcr.data_size * 1000000 / jcr.write_chunk_time / 1024 / 1024);
 
-	char logfile[] = "restore.log";
+	char logfile[] = "log/restore.log";
 	FILE *fp = fopen(logfile, "a");
 
 	/*

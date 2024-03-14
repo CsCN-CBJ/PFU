@@ -74,7 +74,7 @@ void do_delete(int jobid) {
 	close_recipe_store();
 	close_index();
 
-	char logfile[] = "delete.log";
+	char logfile[] = "log/delete.log";
 	FILE *fp = fopen(logfile, "a");
 	/*
 	 * ID of the job we delete,

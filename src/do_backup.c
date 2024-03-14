@@ -152,7 +152,7 @@ void do_backup(char *path) {
 	/*if (estimated_throughput > index_write_throughput)
 	 estimated_throughput = index_write_throughput;*/
 
-	char logfile[] = "backup.log";
+	char logfile[] = "log/backup.log";
 	FILE *fp = fopen(logfile, "a");
 	/*
 	 * job id,
