@@ -7,6 +7,16 @@
 #include "backup.h"
 #include "index/index.h"
 
+/* defined in index.c */
+extern struct {
+	/* Requests to the key-value store */
+	int lookup_requests;
+	int update_requests;
+	int lookup_requests_for_unique;
+	/* Overheads of prefetching module */
+	int read_prefetching_units;
+}index_overhead;
+
 static void* read_recipe_thread(void *arg) {
 
 	int i, j, k;
@@ -85,8 +95,9 @@ static void* lru_get_chunk_thread(void *arg) {
 
 		sync_queue_push(update_chunk_queue, rc);
 
-		jcr.data_size += c->size;
-		jcr.chunk_num++;
+		// filter_phase已经算过一遍了
+		// jcr.data_size += c->size;
+		// jcr.chunk_num++;
 		free_chunk(c);
 	}
 
@@ -100,9 +111,7 @@ static void* lru_get_chunk_thread(void *arg) {
 static void* sha256_thread(void* arg) {
 	// char code[41];
 	while (1) {
-		WARNING("sha256_thread");
 		struct chunk* c = sync_queue_pop(update_chunk_queue);
-		WARNING("sha11256_thread");
 
 		if (c == NULL) {
 			sync_queue_term(hash_queue);
@@ -219,16 +228,32 @@ void do_update(int revision, char *path) {
 
 	/*
 	 * job id,
-	 * chunk num,
-	 * data size,
-	 * actually read container number,
-	 * speed factor,
-	 * throughput
+	 * the size of backup
+	 * accumulative consumed capacity,
+	 * deduplication rate,
+	 * rewritten rate,
+	 * total container number,
+	 * sparse container number,
+	 * inherited container number,
+	 * 4 * index overhead (4 * int)
+	 * throughput,
 	 */
-	fprintf(fp, "%" PRId32 " %" PRId64 " %" PRId32 " %.4f %.4f\n", jcr.id, jcr.data_size,
-			jcr.read_container_num,
-			jcr.data_size / (1024.0 * 1024 * jcr.read_container_num),
-			jcr.data_size * 1000000 / (1024 * 1024 * jcr.total_time));
+	fprintf(fp, "%" PRId32 " %" PRId64 " %" PRId64 " %.4f %.4f %" PRId32 " %" PRId32 " %" PRId32 " %" PRId32" %" PRId32 " %" PRId32" %" PRId32" %.2f\n",
+			jcr.id,
+			jcr.data_size,
+			destor.stored_data_size,
+			jcr.data_size != 0 ?
+					(jcr.data_size - jcr.rewritten_chunk_size - jcr.unique_data_size)/(double) (jcr.data_size)
+					: 0,
+			jcr.data_size != 0 ? (double) (jcr.rewritten_chunk_size) / (double) (jcr.data_size) : 0,
+			jcr.total_container_num,
+			jcr.sparse_container_num,
+			jcr.inherited_sparse_num,
+			index_overhead.lookup_requests,
+			index_overhead.lookup_requests_for_unique,
+			index_overhead.update_requests,
+			index_overhead.read_prefetching_units,
+			(double) jcr.data_size * 1000000 / (1024 * 1024 * jcr.total_time));
 
 	fclose(fp);
 }

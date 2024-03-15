@@ -27,6 +27,7 @@ struct containerMeta {
 struct container {
 	struct containerMeta meta;
 	unsigned char *data;
+	uint32_t fp_size;
 };
 
 void init_container_store();

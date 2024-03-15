@@ -125,6 +125,8 @@ struct container* create_container() {
 	else
 		c->data = 0;
 
+	c->fp_size = WRITE_FP_SZ;
+
 	init_container_meta(&c->meta);
 	c->meta.id = container_count++;
 	return c;
@@ -184,7 +186,7 @@ void write_container(struct container* c) {
 		g_hash_table_iter_init(&iter, c->meta.map);
 		while (g_hash_table_iter_next(&iter, &key, &value)) {
 			struct metaEntry *me = (struct metaEntry *) value;
-			ser_bytes(&me->fp, sizeof(fingerprint));
+			ser_bytes(&me->fp, c->fp_size);
 			ser_bytes(&me->len, sizeof(int32_t));
 			ser_bytes(&me->off, sizeof(int32_t));
 		}
@@ -218,7 +220,7 @@ void write_container(struct container* c) {
 		g_hash_table_iter_init(&iter, c->meta.map);
 		while (g_hash_table_iter_next(&iter, &key, &value)) {
 			struct metaEntry *me = (struct metaEntry *) value;
-			ser_bytes(&me->fp, sizeof(fingerprint));
+			ser_bytes(&me->fp, c->fp_size);
 			ser_bytes(&me->len, sizeof(int32_t));
 			ser_bytes(&me->off, sizeof(int32_t));
 		}
@@ -245,6 +247,7 @@ struct container* retrieve_container_by_id(containerid id) {
 	FILE *fp = old_fp;
 	pthread_mutex_t *mutex = &old_mutex;
 	struct container *c = (struct container*) malloc(sizeof(struct container));
+	c->fp_size = READ_CONTAINER_SZ;
 
 	init_container_meta(&c->meta);
 
@@ -294,7 +297,8 @@ struct container* retrieve_container_by_id(containerid id) {
 	for (i = 0; i < c->meta.chunk_num; i++) {
 		struct metaEntry* me = (struct metaEntry*) malloc(
 				sizeof(struct metaEntry));
-		unser_bytes(&me->fp, sizeof(fingerprint));
+		memset(&me->fp, 0, sizeof(fingerprint));
+		unser_bytes(&me->fp, c->fp_size);
 		unser_bytes(&me->len, sizeof(int32_t));
 		unser_bytes(&me->off, sizeof(int32_t));
 		g_hash_table_insert(c->meta.map, &me->fp, me);
@@ -333,7 +337,7 @@ static struct containerMeta* container_meta_duplicate(struct container *c) {
 }
 
 struct containerMeta* retrieve_container_meta_by_id(containerid id) {
-	FILE *fp = old_fp;
+	FILE *fp = job == DESTOR_UPDATE ? new_fp : old_fp;
 	pthread_mutex_t *mutex = &old_mutex;
 	struct containerMeta* cm = NULL;
 
@@ -377,7 +381,8 @@ struct containerMeta* retrieve_container_meta_by_id(containerid id) {
 	for (i = 0; i < cm->chunk_num; i++) {
 		struct metaEntry* me = (struct metaEntry*) malloc(
 				sizeof(struct metaEntry));
-		unser_bytes(&me->fp, sizeof(fingerprint));
+		memset(&me->fp, 0, sizeof(fingerprint));
+		unser_bytes(&me->fp, READ_FP_META_SZ);
 		unser_bytes(&me->len, sizeof(int32_t));
 		unser_bytes(&me->off, sizeof(int32_t));
 		g_hash_table_insert(cm->map, &me->fp, me);
@@ -409,12 +414,14 @@ struct chunk* get_chunk_in_container(struct container* c, fingerprint *fp) {
 }
 
 int container_overflow(struct container* c, int32_t size) {
+	assert(c->fp_size == 20 || c->fp_size == 32);
 	if (c->meta.data_size + size > CONTAINER_SIZE - CONTAINER_META_SIZE)
 		return 1;
 	/*
 	 * 28 is the size of metaEntry.
+	 * 16 is in struct metaEntry, see write_container
 	 */
-	if ((c->meta.chunk_num + 1) * sizeof(struct metaEntry) + 16 > CONTAINER_META_SIZE)
+	if ((c->meta.chunk_num + 1) * (sizeof(struct metaEntry) - sizeof(fingerprint) + c->fp_size) + 16 > CONTAINER_META_SIZE)
 		return 1;
 	return 0;
 }

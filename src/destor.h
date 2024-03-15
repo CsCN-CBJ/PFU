@@ -286,6 +286,9 @@ struct destor {
 typedef unsigned char fingerprint[32];
 typedef int64_t containerid; //container id
 typedef int64_t segmentid;
+#define READ_CONTAINER_SZ ((job == DESTOR_BACKUP || job == DESTOR_RESTORE || job == DESTOR_UPDATE) ? 20 : sizeof(fingerprint))
+#define READ_FP_META_SZ (job == DESTOR_BACKUP || job == DESTOR_RESTORE ? 20 : sizeof(fingerprint))
+#define WRITE_FP_SZ (job == DESTOR_BACKUP ? 20 : sizeof(fingerprint))
 
 struct chunk {
 	int32_t size;
