@@ -22,7 +22,7 @@ extern struct {
 	GMutex mutex;
 	GCond cond; // index buffer is not full
 	int wait_threshold;
-} index_lock;
+} index_lock, upgrade_index_lock;
 
 /*
  * When a container buffer is full, we push it into container_queue.
@@ -151,6 +151,14 @@ static void* filter_thread(void *arg) {
                         GHashTable *features = sampling(storage_buffer.chunks,
                         		g_sequence_get_length(storage_buffer.chunks));
                         index_update(features, get_container_id(storage_buffer.container_buffer));
+
+                        // do_update index
+                        if (job == DESTOR_UPDATE && destor.upgrade_level == 1) {
+                            pthread_mutex_lock(&upgrade_index_lock.mutex);
+                            upgrade_index_update(storage_buffer.chunks, get_container_id(storage_buffer.container_buffer));
+                            pthread_mutex_unlock(&upgrade_index_lock.mutex);
+                        }
+
                         g_hash_table_destroy(features);
                         g_sequence_free(storage_buffer.chunks);
                         storage_buffer.chunks = g_sequence_new(free_chunk);
@@ -181,6 +189,7 @@ static void* filter_thread(void *arg) {
                 	if(destor.index_category[1] == INDEX_CATEGORY_PHYSICAL_LOCALITY){
                 		struct chunk* ck = new_chunk(0);
                 		memcpy(&ck->fp, &c->fp, sizeof(fingerprint));
+                        memcpy(&ck->pre_fp, &c->pre_fp, sizeof(fingerprint));
                 		g_sequence_append(storage_buffer.chunks, ck);
                 	}
 
@@ -321,6 +330,14 @@ static void* filter_thread(void *arg) {
         	GHashTable *features = sampling(storage_buffer.chunks,
         			g_sequence_get_length(storage_buffer.chunks));
         	index_update(features, get_container_id(storage_buffer.container_buffer));
+
+            // do_update index
+            if (job == DESTOR_UPDATE && destor.upgrade_level == 1) {
+                pthread_mutex_lock(&upgrade_index_lock.mutex);
+                upgrade_index_update(storage_buffer.chunks, get_container_id(storage_buffer.container_buffer));
+                pthread_mutex_unlock(&upgrade_index_lock.mutex);
+            }
+
         	g_hash_table_destroy(features);
         	g_sequence_free(storage_buffer.chunks);
         }

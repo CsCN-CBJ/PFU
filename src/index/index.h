@@ -10,6 +10,7 @@
 #define INDEX_H_
 
 #include "../destor.h"
+#include "index_buffer.h"
 
 /*
  * The function is used to initialize memory structures of a fingerprint index.
@@ -23,9 +24,11 @@ void close_index();
  * lookup fingerprints in a segment in index.
  */
 int index_lookup(struct segment*);
+int upgrade_index_lookup(struct chunk *c);
 /*
  * Insert/update fingerprints.
  */
+void upgrade_index_update(GSequence *chunks, int64_t id);
 void index_update(GHashTable *features, int64_t id);
 
 void index_delete(fingerprint *fp, int64_t id);

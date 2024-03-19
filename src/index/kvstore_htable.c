@@ -7,6 +7,7 @@
 
 #include "../destor.h"
 #include "index.h"
+#include "fingerprint_cache.h"
 
 typedef char* kvpair;
 
@@ -14,8 +15,10 @@ typedef char* kvpair;
 #define get_value(kv) ((int64_t*)(kv+destor.index_key_size))
 
 static GHashTable *htable;
+static GHashTable *upgrade_htable;
 
 static int32_t kvpair_size;
+static int32_t upgrade_kvpair_size;
 
 /*
  * Create a new kv pair.
@@ -203,4 +206,34 @@ void kvstore_htable_delete(char* key, int64_t id){
 		/* This kvpair can be removed. */
 		g_hash_table_remove(htable, key);
 	}
+}
+
+static kvpair new_upgrade_kvpair() {
+	return calloc(1, upgrade_kvpair_size);
+}
+
+void init_upgrade_kvstore_htable() {
+	destor.upgrade_index_value_length = sizeof(upgrade_index_value_t);
+	upgrade_kvpair_size = destor.index_key_size + destor.upgrade_index_value_length;
+	upgrade_htable = g_hash_table_new_full(g_int_hash, g_feature_equal,
+			free_kvpair, NULL);
+}
+
+void close_upgrade_kvstore_htable() {
+	g_hash_table_destroy(upgrade_htable);
+}
+
+upgrade_index_value_t* upgrade_kvstore_htable_lookup(char* key) {
+	kvpair kv = g_hash_table_lookup(upgrade_htable, key);
+	return kv ? (void*)(get_value(kv)) : NULL;
+}
+
+void upgrade_kvstore_htable_update(char* key, upgrade_index_value_t* value) {
+	kvpair kv = g_hash_table_lookup(upgrade_htable, key);
+	if (!kv) {
+		kv = new_upgrade_kvpair();
+		memcpy(get_key(kv), key, destor.index_key_size);
+		g_hash_table_replace(upgrade_htable, get_key(kv), kv);
+	}
+	memcpy(get_value(kv), value, destor.upgrade_index_value_length);
 }

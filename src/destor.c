@@ -23,7 +23,7 @@ extern void load_config_from_string(sds config);
 /* : means argument is required.
  * :: means argument is required and no space.
  */
-const char * const short_options = "sr::n::u::t::p::h";
+const char * const short_options = "sr::n::u::i::t::p::h";
 
 struct option long_options[] = {
 		{ "state", 0, NULL, 's' },
@@ -43,7 +43,7 @@ void usage() {
 	puts("\t\tdestor -n<JOB_ID> /path/to/restore -p\"a line in config file\"");
 
 	puts("\tstart a update job");
-	puts("\t\tdestor -u<JOB_ID> /path/to/data(useless) -p\"a line in config file\"");
+	puts("\t\tdestor -u<JOB_ID> /path/to/data(useless) -i<level default to 0> -p\"a line in config file\"");
 
 	puts("\tprint state of destor");
 	puts("\t\tdestor -s");
@@ -87,6 +87,7 @@ void check_simulation_level(int last_level, int current_level) {
 }
 
 void destor_start() {
+	memset(&destor, 0, sizeof(struct destor));
 
 	/* Init */
 	destor.working_directory = sdsnew("/home/data/working/");
@@ -295,6 +296,9 @@ int main(int argc, char **argv) {
 			job = DESTOR_UPDATE;
 			revision = atoi(optarg);
 			break;
+		case 'i':
+			destor.upgrade_level = atoi(optarg);
+			break;
 		case 's':
 			destor_stat();
 			break;
@@ -403,6 +407,7 @@ struct chunk* new_chunk(int32_t size) {
 	ck->flag = CHUNK_UNIQUE;
 	ck->id = TEMPORARY_ID;
 	memset(&ck->fp, 0x0, sizeof(fingerprint));
+	memset(&ck->pre_fp, 0x0, sizeof(fingerprint));
 	ck->size = size;
 
 	if (size > 0)

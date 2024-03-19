@@ -195,6 +195,7 @@ int job;
 
 struct destor {
 	sds working_directory;
+	int upgrade_level;
 	int simulation_level;
     int trace_format;
 	int verbosity;
@@ -228,6 +229,7 @@ struct destor {
 	int index_key_value_store;
 	/* The max number of prefetching units a key can refer to */
 	int index_value_length;
+	int upgrade_index_value_length;
 	/* the size of the key in byte */
 	int index_key_size;
 
@@ -286,7 +288,7 @@ struct destor {
 typedef unsigned char fingerprint[32];
 typedef int64_t containerid; //container id
 typedef int64_t segmentid;
-#define READ_CONTAINER_SZ ((job == DESTOR_BACKUP || job == DESTOR_RESTORE || job == DESTOR_UPDATE) ? 20 : sizeof(fingerprint))
+#define READ_CONTAINER_SZ ((job == DESTOR_NEW_RESTORE) ? sizeof(fingerprint) : 20)
 #define READ_FP_META_SZ (job == DESTOR_BACKUP || job == DESTOR_RESTORE ? 20 : sizeof(fingerprint))
 #define WRITE_FP_SZ (job == DESTOR_BACKUP ? 20 : sizeof(fingerprint))
 
@@ -295,6 +297,7 @@ struct chunk {
 	int flag;
 	containerid id;
 	fingerprint fp;
+	fingerprint pre_fp;
 	unsigned char *data;
 };
 

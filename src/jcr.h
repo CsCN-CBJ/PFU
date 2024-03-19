@@ -40,6 +40,8 @@ struct jcr{
 	int32_t inherited_sparse_num;
 	int32_t total_container_num;
 
+	uint32_t hash_num;
+
 	struct backupVersion* bv;
 	struct backupVersion* new_bv;
 
@@ -50,6 +52,7 @@ struct jcr{
 	double read_time;
 	double chunk_time;
 	double hash_time;
+	double pre_dedup_time;
 	double dedup_time;
 	double rewrite_time;
 	double filter_time;

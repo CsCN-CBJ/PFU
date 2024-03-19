@@ -8,14 +8,16 @@
 #include "index/index.h"
 
 /* defined in index.c */
-extern struct {
-	/* Requests to the key-value store */
-	int lookup_requests;
-	int update_requests;
-	int lookup_requests_for_unique;
-	/* Overheads of prefetching module */
-	int read_prefetching_units;
-}index_overhead;
+extern struct index_overhead index_overhead, upgrade_index_overhead;
+
+struct {
+	/* g_mutex_init() is unnecessary if in static storage. */
+	pthread_mutex_t mutex;
+	pthread_cond_t cond; // index buffer is not full
+	// index buffer is full, waiting
+	// if threshold < 0, it indicates no threshold.
+	int wait_threshold;
+} upgrade_index_lock;
 
 static void* read_recipe_thread(void *arg) {
 
@@ -75,7 +77,7 @@ static void* lru_get_chunk_thread(void *arg) {
 	while ((c = sync_queue_pop(update_recipe_queue))) {
 
 		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
-			sync_queue_push(update_chunk_queue, c);
+			sync_queue_push(upgrade_chunk_queue, c);
 			continue;
 		}
 
@@ -90,10 +92,12 @@ static void* lru_get_chunk_thread(void *arg) {
 			jcr.read_container_num++;
 		}
 		struct chunk *rc = get_chunk_in_container(con, &c->fp);
+		memcpy(rc->pre_fp, c->fp, sizeof(fingerprint));
+		rc->id = TEMPORARY_ID;
 		assert(rc);
 		TIMER_END(1, jcr.read_chunk_time);
 
-		sync_queue_push(update_chunk_queue, rc);
+		sync_queue_push(upgrade_chunk_queue, rc);
 
 		// filter_phase已经算过一遍了
 		// jcr.data_size += c->size;
@@ -101,9 +105,41 @@ static void* lru_get_chunk_thread(void *arg) {
 		free_chunk(c);
 	}
 
-	sync_queue_term(update_chunk_queue);
+	sync_queue_term(upgrade_chunk_queue);
 
 	free_lru_cache(cache);
+
+	return NULL;
+}
+
+static void* pre_dedup_thread(void *arg) {
+	while (1) {
+		struct chunk* c = sync_queue_pop(upgrade_chunk_queue);
+
+		if (c == NULL) {
+			sync_queue_term(pre_dedup_queue);
+			break;
+		}
+
+		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
+			sync_queue_push(pre_dedup_queue, c);
+			continue;
+		}
+
+		if (destor.upgrade_level == 1) {
+			/* Each duplicate chunk will be marked. */
+			pthread_mutex_lock(&upgrade_index_lock.mutex);
+			// while (upgrade_index_lookup(c) == 0) { // 目前永远是1, 所以不用管cond
+			// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
+			// }
+			upgrade_index_lookup(c);
+			pthread_mutex_unlock(&upgrade_index_lock.mutex);
+			
+		}
+
+		sync_queue_push(pre_dedup_queue, c);
+	}
+	sync_queue_term(pre_dedup_queue);
 
 	return NULL;
 }
@@ -111,20 +147,21 @@ static void* lru_get_chunk_thread(void *arg) {
 static void* sha256_thread(void* arg) {
 	// char code[41];
 	while (1) {
-		struct chunk* c = sync_queue_pop(update_chunk_queue);
+		struct chunk* c = sync_queue_pop(pre_dedup_queue);
 
 		if (c == NULL) {
 			sync_queue_term(hash_queue);
 			break;
 		}
 
-		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
+		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
 			sync_queue_push(hash_queue, c);
 			continue;
 		}
 
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
+		jcr.hash_num++;
 		SHA256_CTX ctx;
 		SHA256_Init(&ctx);
 		SHA256_Update(&ctx, c->data, c->size);
@@ -147,6 +184,7 @@ void do_update(int revision, char *path) {
 	init_index();
 
 	init_update_jcr(revision, path);
+	pthread_mutex_init(&upgrade_index_lock.mutex, NULL);
 
 	destor_log(DESTOR_NOTICE, "job id: %d", jcr.id);
 	destor_log(DESTOR_NOTICE, "new job id: %d", jcr.new_id);
@@ -154,8 +192,9 @@ void do_update(int revision, char *path) {
 	destor_log(DESTOR_NOTICE, "new backup path: %s", jcr.new_bv->path);
 	destor_log(DESTOR_NOTICE, "update to: %s", jcr.path);
 
-	update_chunk_queue = sync_queue_new(100);
 	update_recipe_queue = sync_queue_new(100);
+	upgrade_chunk_queue = sync_queue_new(100);
+	pre_dedup_queue = sync_queue_new(100);
 	hash_queue = sync_queue_new(100);
 
 	TIMER_DECLARE(1);
@@ -164,9 +203,10 @@ void do_update(int revision, char *path) {
 	puts("==== update begin ====");
 
     jcr.status = JCR_STATUS_RUNNING;
-	pthread_t recipe_t, read_t, hash_t;
+	pthread_t recipe_t, read_t, pre_dedup_t, hash_t;
 	pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
     pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
+    pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
     pthread_create(&hash_t, NULL, sha256_thread, NULL);
 	start_dedup_phase();
 	start_rewrite_phase();
@@ -182,7 +222,8 @@ void do_update(int revision, char *path) {
         jcr.data_size, jcr.chunk_num, jcr.file_num);
 
 	assert(sync_queue_size(update_recipe_queue) == 0);
-	assert(sync_queue_size(update_chunk_queue) == 0);
+	assert(sync_queue_size(upgrade_chunk_queue) == 0);
+	assert(sync_queue_size(pre_dedup_queue) == 0);
 	assert(sync_queue_size(hash_queue) == 0);
 
 	free_backup_version(jcr.bv);
@@ -191,6 +232,7 @@ void do_update(int revision, char *path) {
 
 	pthread_join(recipe_t, NULL);
 	pthread_join(read_t, NULL);
+	pthread_join(pre_dedup_t, NULL);
 	pthread_join(hash_t, NULL);
 	stop_dedup_phase();
 	stop_rewrite_phase();
@@ -202,6 +244,7 @@ void do_update(int revision, char *path) {
 	close_index();
 	close_container_store();
 	close_recipe_store();
+	pthread_mutex_destroy(&upgrade_index_lock.mutex);
 
 	printf("job id: %" PRId32 "\n", jcr.id);
 	printf("update path: %s\n", jcr.path);

@@ -22,6 +22,15 @@ struct index_buffer {
 };
 
 struct index_overhead {
+    /* detailed statistics */
+    uint32_t index_lookup_requests;
+    uint32_t cache_lookup_requests;
+    uint32_t cache_hits;
+    uint32_t kvstore_lookup_requests;
+    uint32_t kvstore_hits;
+    // index_lookup_base
+    uint32_t storage_buffer_hits;
+    uint32_t index_buffer_hits;
     /* Requests to the key-value store */
     int lookup_requests;
     int update_requests;

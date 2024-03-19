@@ -11,6 +11,7 @@
 #include "utils/sync_queue.h"
 
 SyncQueue *update_recipe_queue;
-SyncQueue *update_chunk_queue;
+SyncQueue *upgrade_chunk_queue;
+SyncQueue *pre_dedup_queue;
 
 #endif /* UPDATE_H_ */

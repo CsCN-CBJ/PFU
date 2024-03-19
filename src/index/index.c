@@ -7,6 +7,7 @@
 #include "../jcr.h"
 
 struct index_overhead index_overhead;
+struct index_overhead upgrade_index_overhead;
 
 struct index_buffer index_buffer;
 
@@ -116,17 +117,17 @@ void init_index() {
     init_kvstore();
 
     init_fingerprint_cache();
+    init_upgrade_fingerprint_cache();
 
-    index_overhead.lookup_requests = 0;
-    index_overhead.update_requests = 0;
-    index_overhead.lookup_requests_for_unique = 0;
-    index_overhead.read_prefetching_units = 0;
+    memset(&index_overhead, 0, sizeof(struct index_overhead));
+    memset(&upgrade_index_overhead, 0, sizeof(struct index_overhead));
 
     NOTICE("Init index module successfully");
 }
 
 void close_index() {
     close_kvstore();
+    close_upgrade_kvstore();
 }
 
 extern struct{
@@ -150,6 +151,7 @@ static void index_lookup_base(struct segment *s){
         /* First check it in the storage buffer */
         if(storage_buffer.container_buffer
                 && lookup_fingerprint_in_container(storage_buffer.container_buffer, &c->fp)){
+            index_overhead.storage_buffer_hits++;
             c->id = get_container_id(storage_buffer.container_buffer);
             SET_CHUNK(c, CHUNK_DUPLICATE);
             SET_CHUNK(c, CHUNK_REWRITE_DENIED);
@@ -163,6 +165,7 @@ static void index_lookup_base(struct segment *s){
         if (!tq) {
             tq = g_queue_new();
         } else if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+            index_overhead.index_buffer_hits++;
             struct indexElem *be = g_queue_peek_head(tq);
             c->id = be->id;
             SET_CHUNK(c, CHUNK_DUPLICATE);
@@ -173,6 +176,7 @@ static void index_lookup_base(struct segment *s){
             /* Searching in fingerprint cache */
             int64_t id = fingerprint_cache_lookup(&c->fp);
             if(id != TEMPORARY_ID){
+                index_overhead.cache_hits++;
                 c->id = id;
                 SET_CHUNK(c, CHUNK_DUPLICATE);
             }
@@ -224,7 +228,7 @@ extern struct {
     // index buffer is full, waiting
     // if threshold < 0, it indicates no threshold.
     int wait_threshold;
-} index_lock;
+} index_lock, upgrade_index_lock;
 
 /*
  * return 1: indicates lookup is successful.
@@ -350,5 +354,92 @@ int index_update_buffer(struct segment *s){
                 index_buffer.chunk_num);
         return 0;
     }
+    return 1;
+}
+
+void upgrade_index_update(GSequence *chunks, int64_t id) {
+    VERBOSE("Filter phase: update upgrade index %d features", g_sequence_get_length(chunks));
+    struct upgrade_index_value v;
+    GSequenceIter *iter = g_sequence_get_begin_iter(chunks);
+    GSequenceIter *end = g_sequence_get_end_iter(chunks);
+    for (; iter != end; iter = g_sequence_iter_next(iter)) {
+        struct chunk* c = g_sequence_get(iter);        
+        upgrade_index_overhead.update_requests++;
+        
+        v.id = id;
+        memcpy(&v.fp, &c->fp, sizeof(fingerprint));
+        upgrade_kvstore_update((char*)&c->pre_fp, &v);
+    }
+}
+
+void _upgrade_index_lookup(struct chunk *c){
+    
+    if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
+        return;
+
+    upgrade_index_overhead.index_lookup_requests++;
+
+    /* First check it in the storage buffer */
+
+    /*
+    * First check the buffered fingerprints,
+    * recently backup fingerprints.
+    */
+
+    /* Check the fingerprint cache */
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        /* Searching in fingerprint cache */
+        upgrade_index_kv_t* kv = upgrade_fingerprint_cache_lookup(&c->pre_fp);
+        upgrade_index_overhead.cache_lookup_requests++;
+        if(kv){
+            upgrade_index_overhead.cache_hits++;
+            VERBOSE("Pre Dedup phase: existing fingerprint");
+            c->id = kv->value.id;
+            memcpy(&c->fp, &kv->value.fp, sizeof(fingerprint));
+            SET_CHUNK(c, CHUNK_DUPLICATE);
+        }
+    }
+
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        /* Searching in key-value store */
+        upgrade_index_value_t* v = upgrade_kvstore_lookup(&c->pre_fp);
+        upgrade_index_overhead.kvstore_lookup_requests++;
+        if(v) {
+            upgrade_index_overhead.kvstore_hits++;
+            VERBOSE("Pre Dedup phase: lookup kvstore for existing");
+            upgrade_fingerprint_cache_insert(&c->pre_fp, v);
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+            SET_CHUNK(c, CHUNK_DUPLICATE);
+        }
+    }
+
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        upgrade_index_overhead.lookup_requests_for_unique++;
+        VERBOSE("Dedup phase: non-existing fingerprint");
+    }
+}
+
+/*
+ * return 1: indicates lookup is successful.
+ * return 0: indicates the index buffer is full.
+ */
+int upgrade_index_lookup(struct chunk* c) {
+
+    /* Ensure the next phase not be blocked. */
+    // if (index_lock.wait_threshold > 0
+    //         && index_buffer.chunk_num >= index_lock.wait_threshold) {
+    //     DEBUG("The index buffer is full (%d chunks in buffer)",
+    //             index_buffer.chunk_num);
+    //     return 0;
+    // }
+
+    TIMER_DECLARE(1);
+    TIMER_BEGIN(1);
+
+    _upgrade_index_lookup(c);
+
+    TIMER_END(1, jcr.pre_dedup_time);
+
     return 1;
 }

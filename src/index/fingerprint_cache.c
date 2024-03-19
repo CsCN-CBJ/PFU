@@ -9,18 +9,13 @@
 #include "../storage/containerstore.h"
 #include "../recipe/recipestore.h"
 #include "../utils/lru_cache.h"
+#include "fingerprint_cache.h"
 
 static struct lruCache* lru_queue;
+static struct lruCache* upgrade_lru_queue;
 
 /* defined in index.c */
-extern struct {
-	/* Requests to the key-value store */
-	int lookup_requests;
-	int update_requests;
-	int lookup_requests_for_unique;
-	/* Overheads of prefetching module */
-	int read_prefetching_units;
-}index_overhead;
+extern struct index_overhead index_overhead;
 
 void init_fingerprint_cache(){
 	switch(destor.index_category[1]){
@@ -105,4 +100,32 @@ void fingerprint_cache_prefetch(int64_t id){
 			break;
 		}
 	}
+}
+
+void free_upgrade_index_value(upgrade_index_kv_t *kv) {
+	free(kv);
+}
+
+int compare_upgrade_index_value(upgrade_index_kv_t *kv, fingerprint *old_fp) {
+	return memcmp(&kv->old_fp, old_fp, sizeof(fingerprint)) == 0;
+}
+
+void init_upgrade_fingerprint_cache() {
+	if (destor.upgrade_level == 1) {
+		destor.index_cache_size *= 888; // TODO: 修改这个数值
+	}
+	upgrade_lru_queue = new_lru_cache(destor.index_cache_size,
+				free_upgrade_index_value, compare_upgrade_index_value);
+}
+
+upgrade_index_kv_t* upgrade_fingerprint_cache_lookup(fingerprint *old_fp) {
+	return lru_cache_lookup(upgrade_lru_queue, old_fp);
+}
+
+void upgrade_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t *v) {
+	// 这里的指针被kvstore引用, 需要复制一份
+	upgrade_index_kv_t* new = malloc(sizeof(upgrade_index_kv_t));
+	memcpy(&new->old_fp, old_fp, sizeof(fingerprint));
+	memcpy(&new->value, v, sizeof(upgrade_index_value_t));
+	lru_cache_insert(upgrade_lru_queue, new, NULL, NULL);
 }
