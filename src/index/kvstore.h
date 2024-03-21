@@ -12,7 +12,7 @@ extern void (*kvstore_update)(char *key, int64_t id);
 extern void (*kvstore_delete)(char* key, int64_t id);
 
 extern void (*close_upgrade_kvstore)();
-extern upgrade_index_value_t* (*upgrade_kvstore_lookup)(char *key);
-extern void (*upgrade_kvstore_update)(char *key, upgrade_index_value_t* value);
+extern void* (*upgrade_kvstore_lookup)(char *key);
+extern void (*upgrade_kvstore_update)(char *key, void* value);
 
 #endif

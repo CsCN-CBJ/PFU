@@ -229,7 +229,6 @@ struct destor {
 	int index_key_value_store;
 	/* The max number of prefetching units a key can refer to */
 	int index_value_length;
-	int upgrade_index_value_length;
 	/* the size of the key in byte */
 	int index_key_size;
 

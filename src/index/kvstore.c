@@ -6,10 +6,10 @@ extern int64_t* kvstore_htable_lookup(char* key);
 extern void kvstore_htable_update(char* key, int64_t id);
 extern void kvstore_htable_delete(char* key, int64_t id);
 
-extern void init_upgrade_kvstore_htable();
+extern void init_upgrade_kvstore_htable(int32_t value_size);
 extern void close_upgrade_kvstore_htable();
-extern upgrade_index_value_t* upgrade_kvstore_htable_lookup(char* key);
-extern void upgrade_kvstore_htable_update(char* key, upgrade_index_value_t* value);
+extern void* upgrade_kvstore_htable_lookup(char* key);
+extern void upgrade_kvstore_htable_update(char* key, void* value);
 
 /*
  * Mapping a fingerprint (or feature) to the prefetching unit.
@@ -21,15 +21,19 @@ void (*kvstore_update)(char *key, int64_t id);
 void (*kvstore_delete)(char* key, int64_t id);
 
 void (*close_upgrade_kvstore)();
-upgrade_index_value_t* (*upgrade_kvstore_lookup)(char *key);
-void (*upgrade_kvstore_update)(char *key, upgrade_index_value_t* value);
+void* (*upgrade_kvstore_lookup)(char *key);
+void (*upgrade_kvstore_update)(char *key, void* value);
 
 void init_kvstore() {
 
     switch(destor.index_key_value_store){
     	case INDEX_KEY_VALUE_HTABLE:
     		init_kvstore_htable();
-			init_upgrade_kvstore_htable();
+			if (destor.upgrade_level == 1) {
+				init_upgrade_kvstore_htable(sizeof(upgrade_index_value_t));
+			} else if (destor.upgrade_level == 2) {
+				init_upgrade_kvstore_htable(sizeof(int64_t));
+			}
 
     		close_kvstore = close_kvstore_htable;
     		kvstore_lookup = kvstore_htable_lookup;
