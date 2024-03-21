@@ -92,7 +92,7 @@ static void* lru_get_chunk_thread(void *arg) {
 			jcr.read_container_num++;
 		}
 		struct chunk *rc = get_chunk_in_container(con, &c->fp);
-		memcpy(rc->pre_fp, c->fp, sizeof(fingerprint));
+		memcpy(rc->old_fp, c->fp, sizeof(fingerprint));
 		rc->id = TEMPORARY_ID;
 		assert(rc);
 		TIMER_END(1, jcr.read_chunk_time);

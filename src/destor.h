@@ -296,7 +296,7 @@ struct chunk {
 	int flag;
 	containerid id;
 	fingerprint fp;
-	fingerprint pre_fp;
+	fingerprint old_fp;
 	unsigned char *data;
 };
 

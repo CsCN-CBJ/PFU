@@ -407,7 +407,7 @@ struct chunk* new_chunk(int32_t size) {
 	ck->flag = CHUNK_UNIQUE;
 	ck->id = TEMPORARY_ID;
 	memset(&ck->fp, 0x0, sizeof(fingerprint));
-	memset(&ck->pre_fp, 0x0, sizeof(fingerprint));
+	memset(&ck->old_fp, 0x0, sizeof(fingerprint));
 	ck->size = size;
 
 	if (size > 0)

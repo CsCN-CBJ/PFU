@@ -189,7 +189,7 @@ static void* filter_thread(void *arg) {
                 	if(destor.index_category[1] == INDEX_CATEGORY_PHYSICAL_LOCALITY){
                 		struct chunk* ck = new_chunk(0);
                 		memcpy(&ck->fp, &c->fp, sizeof(fingerprint));
-                        memcpy(&ck->pre_fp, &c->pre_fp, sizeof(fingerprint));
+                        memcpy(&ck->old_fp, &c->old_fp, sizeof(fingerprint));
                 		g_sequence_append(storage_buffer.chunks, ck);
                 	}
 
