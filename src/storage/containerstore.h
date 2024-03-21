@@ -60,4 +60,10 @@ int container_meta_check_id(struct containerMeta*, containerid*);
 
 void container_meta_foreach(struct containerMeta* cm, void (*func)(fingerprint*, void*), void* data);
 
+// upgrade
+void init_upgrade_index_store();
+void close_upgrade_index_store();
+void write_upgrade_index_container(GHashTable* c, int64_t id);
+GHashTable* retrieve_upgrade_index_container_by_id(int64_t id);
+
 #endif /* CONTAINERSTORE_H_ */

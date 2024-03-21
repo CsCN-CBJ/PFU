@@ -126,7 +126,7 @@ static void* pre_dedup_thread(void *arg) {
 			continue;
 		}
 
-		if (destor.upgrade_level == 1) {
+		if (destor.upgrade_level >= 1) {
 			/* Each duplicate chunk will be marked. */
 			pthread_mutex_lock(&upgrade_index_lock.mutex);
 			// while (upgrade_index_lookup(c) == 0) { // 目前永远是1, 所以不用管cond
@@ -188,6 +188,7 @@ void do_update(int revision, char *path) {
 
 	destor_log(DESTOR_NOTICE, "job id: %d", jcr.id);
 	destor_log(DESTOR_NOTICE, "new job id: %d", jcr.new_id);
+	destor_log(DESTOR_NOTICE, "upgrade_level %d", destor.upgrade_level);
 	destor_log(DESTOR_NOTICE, "backup path: %s", jcr.bv->path);
 	destor_log(DESTOR_NOTICE, "new backup path: %s", jcr.new_bv->path);
 	destor_log(DESTOR_NOTICE, "update to: %s", jcr.path);

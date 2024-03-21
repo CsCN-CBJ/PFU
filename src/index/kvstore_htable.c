@@ -221,6 +221,7 @@ void init_upgrade_kvstore_htable(int32_t value_size) {
 }
 
 void close_upgrade_kvstore_htable() {
+	if (!upgrade_htable) return;
 	g_hash_table_destroy(upgrade_htable);
 }
 

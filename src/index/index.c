@@ -357,18 +357,48 @@ int index_update_buffer(struct segment *s){
     return 1;
 }
 
-void upgrade_index_update(GSequence *chunks, int64_t id) {
-    VERBOSE("Filter phase: update upgrade index %d features", g_sequence_get_length(chunks));
-    struct upgrade_index_value v;
+static void upgrade_index_update1(GSequence *chunks, int64_t id) {
+    VERBOSE("Filter phase: update1 upgrade index %d features", g_sequence_get_length(chunks));
+    upgrade_index_value_t v;
+    GSequenceIter *iter = g_sequence_get_begin_iter(chunks);
+    GSequenceIter *end = g_sequence_get_end_iter(chunks);
+    for (; iter != end; iter = g_sequence_iter_next(iter)) {
+        struct chunk* c = g_sequence_get(iter);        
+        upgrade_index_overhead.update_requests++;
+
+        v.id = id;
+        memcpy(&v.fp, &c->fp, sizeof(fingerprint));
+        upgrade_kvstore_update((char*)&c->pre_fp, &v);
+    }
+}
+
+static void upgrade_index_update2(GSequence *chunks, int64_t id) {
+    VERBOSE("Filter phase: update2 upgrade index %d features", g_sequence_get_length(chunks));
+    upgrade_index_kv_t *kv;
+    GHashTable* con = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
     GSequenceIter *iter = g_sequence_get_begin_iter(chunks);
     GSequenceIter *end = g_sequence_get_end_iter(chunks);
     for (; iter != end; iter = g_sequence_iter_next(iter)) {
         struct chunk* c = g_sequence_get(iter);        
         upgrade_index_overhead.update_requests++;
         
-        v.id = id;
-        memcpy(&v.fp, &c->fp, sizeof(fingerprint));
-        upgrade_kvstore_update((char*)&c->pre_fp, &v);
+        upgrade_kvstore_update((char*)&c->pre_fp, &id);
+
+        kv = (upgrade_index_kv_t*)malloc(sizeof(upgrade_index_kv_t));
+        kv->value.id = id;
+        memcpy(&kv->value.fp, &c->fp, sizeof(fingerprint));
+        memcpy(&kv->old_fp, &c->pre_fp, sizeof(fingerprint));
+        g_hash_table_insert(con, &kv->old_fp, &kv->value);
+    }
+    // 暂时使用containerid, 可能需要改成单独的id
+    write_upgrade_index_container(con, id);
+}
+
+void upgrade_index_update(GSequence *chunks, int64_t id) {
+    if (destor.upgrade_level == 1) {
+        upgrade_index_update1(chunks, id);
+    } else if (destor.upgrade_level == 2) {
+        upgrade_index_update2(chunks, id);
     }
 }
 
@@ -402,15 +432,34 @@ void _upgrade_index_lookup(struct chunk *c){
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in key-value store */
-        upgrade_index_value_t* v = upgrade_kvstore_lookup(&c->pre_fp);
-        upgrade_index_overhead.kvstore_lookup_requests++;
-        if(v) {
-            upgrade_index_overhead.kvstore_hits++;
-            VERBOSE("Pre Dedup phase: lookup kvstore for existing");
-            upgrade_fingerprint_cache_insert(&c->pre_fp, v);
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-            SET_CHUNK(c, CHUNK_DUPLICATE);
+        if (destor.upgrade_level == 1) {
+            upgrade_index_value_t* v = upgrade_kvstore_lookup(&c->pre_fp);
+            upgrade_index_overhead.kvstore_lookup_requests++;
+            if(v) {
+                upgrade_index_overhead.kvstore_hits++;
+                VERBOSE("Pre Dedup phase: lookup kvstore for existing");
+                upgrade_fingerprint_cache_insert(&c->pre_fp, v);
+                c->id = v->id;
+                memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+                SET_CHUNK(c, CHUNK_DUPLICATE);
+            }
+        } else if (destor.upgrade_level == 2) {
+            int64_t* ids = upgrade_kvstore_lookup((char*)&c->pre_fp);
+            upgrade_index_overhead.kvstore_lookup_requests++;
+            if(ids){
+                upgrade_index_overhead.kvstore_hits++;
+                VERBOSE("Pre Dedup phase: lookup kvstore for existing");
+                /* prefetch the target unit */
+                upgrade_fingerprint_cache_prefetch(*ids);
+                upgrade_index_kv_t* kv = upgrade_fingerprint_cache_lookup(&c->pre_fp);
+                if(kv){
+                    c->id = kv->value.id;
+                    memcpy(&c->fp, &kv->value.fp, sizeof(fingerprint));
+                    SET_CHUNK(c, CHUNK_DUPLICATE);
+                }else{
+                    NOTICE("Pre Dedup phase: A key collision occurs");
+                }
+            }
         }
     }
 

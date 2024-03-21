@@ -153,7 +153,7 @@ static void* filter_thread(void *arg) {
                         index_update(features, get_container_id(storage_buffer.container_buffer));
 
                         // do_update index
-                        if (job == DESTOR_UPDATE && destor.upgrade_level == 1) {
+                        if (job == DESTOR_UPDATE && destor.upgrade_level >= 1) {
                             pthread_mutex_lock(&upgrade_index_lock.mutex);
                             upgrade_index_update(storage_buffer.chunks, get_container_id(storage_buffer.container_buffer));
                             pthread_mutex_unlock(&upgrade_index_lock.mutex);
@@ -332,7 +332,7 @@ static void* filter_thread(void *arg) {
         	index_update(features, get_container_id(storage_buffer.container_buffer));
 
             // do_update index
-            if (job == DESTOR_UPDATE && destor.upgrade_level == 1) {
+            if (job == DESTOR_UPDATE && destor.upgrade_level >= 1) {
                 pthread_mutex_lock(&upgrade_index_lock.mutex);
                 upgrade_index_update(storage_buffer.chunks, get_container_id(storage_buffer.container_buffer));
                 pthread_mutex_unlock(&upgrade_index_lock.mutex);

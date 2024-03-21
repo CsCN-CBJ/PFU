@@ -15,7 +15,7 @@ static struct lruCache* lru_queue;
 static struct lruCache* upgrade_lru_queue;
 
 /* defined in index.c */
-extern struct index_overhead index_overhead;
+extern struct index_overhead index_overhead, upgrade_index_overhead;
 
 void init_fingerprint_cache(){
 	switch(destor.index_category[1]){
@@ -111,7 +111,7 @@ int compare_upgrade_index_value(upgrade_index_kv_t *kv, fingerprint *old_fp) {
 }
 
 void init_upgrade_fingerprint_cache() {
-	if (destor.upgrade_level == 1) {
+	if (destor.upgrade_level >= 1) {
 		destor.index_cache_size *= 888; // TODO: 修改这个数值
 	}
 	upgrade_lru_queue = new_lru_cache(destor.index_cache_size,
@@ -128,4 +128,19 @@ void upgrade_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t
 	memcpy(&new->old_fp, old_fp, sizeof(fingerprint));
 	memcpy(&new->value, v, sizeof(upgrade_index_value_t));
 	lru_cache_insert(upgrade_lru_queue, new, NULL, NULL);
+}
+
+void upgrade_fingerprint_cache_prefetch(int64_t id) {
+	GHashTable* c = retrieve_upgrade_index_container_by_id(id);
+	index_overhead.read_prefetching_units++;
+	if (!c) {
+		WARNING("Error! The index container %lld has not been written!, %lld", id, c);
+		exit(1);
+	}
+	GHashTableIter iter;
+	gpointer key, value;
+	g_hash_table_iter_init(&iter, c);
+	while(g_hash_table_iter_next(&iter, &key, &value)){
+		upgrade_fingerprint_cache_insert(key, value);
+	}
 }

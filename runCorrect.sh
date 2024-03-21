@@ -19,7 +19,7 @@ let ++RESTORE_ID
 
 # update test
 mkdir -p ${DST_DIR}${RESTORE_ID}
-destor -u0 ${SRC_DIR} -i1 "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
+destor -u0 ${SRC_DIR} -i2 "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
 destor -n1 ${DST_DIR}${RESTORE_ID}
 let ++RESTORE_ID
 

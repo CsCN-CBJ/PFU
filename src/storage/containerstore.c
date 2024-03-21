@@ -83,6 +83,7 @@ void init_container_store() {
 
 	pthread_create(&append_t, NULL, append_thread, NULL);
 
+	init_upgrade_index_store();
     NOTICE("Init container store successfully");
 }
 
@@ -105,6 +106,8 @@ void close_container_store() {
 
 	pthread_mutex_destroy(&old_mutex);
 	pthread_mutex_destroy(&new_mutex);
+
+	close_upgrade_index_store();
 }
 
 static void init_container_meta(struct containerMeta *meta) {
@@ -514,4 +517,26 @@ void container_meta_foreach(struct containerMeta* cm, void (*func)(fingerprint*,
 	while(g_hash_table_iter_next(&iter, &key, &value)){
 		func(key, data);
 	}
+}
+
+// key: id
+// value: upgrade_index_container(GHashTable<old_fp, upgrade_index_value_t>)
+static GHashTable* upgrade_index_store;
+
+void init_upgrade_index_store() {
+	upgrade_index_store = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, g_hash_table_destroy);
+}
+
+void close_upgrade_index_store() {
+	g_hash_table_destroy(upgrade_index_store);
+}
+
+void write_upgrade_index_container(GHashTable* c, int64_t id) {
+	int64_t *cid = (int64_t*) malloc(sizeof(int64_t));
+	*cid = id;
+	g_hash_table_insert(upgrade_index_store, cid, c);
+}
+
+GHashTable* retrieve_upgrade_index_container_by_id(int64_t id) {
+	return g_hash_table_lookup(upgrade_index_store, &id);
 }

@@ -25,4 +25,6 @@ typedef struct upgrade_index_kv {
 void init_upgrade_fingerprint_cache();
 upgrade_index_kv_t* upgrade_fingerprint_cache_lookup(fingerprint *old_fp);
 void upgrade_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t *v);
+
+void upgrade_fingerprint_cache_prefetch(int64_t id);
 #endif /* FINGERPRINT_CACHE_H_ */
