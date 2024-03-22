@@ -132,7 +132,7 @@ void upgrade_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t
 
 void upgrade_fingerprint_cache_prefetch(int64_t id) {
 	GHashTable* c = retrieve_upgrade_index_container_by_id(id);
-	index_overhead.read_prefetching_units++;
+	upgrade_index_overhead.read_prefetching_units++;
 	if (!c) {
 		WARNING("Error! The index container %lld has not been written!, %lld", id, c);
 		exit(1);

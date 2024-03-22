@@ -6,14 +6,7 @@
 #include "storage/containerstore.h"
 
 /* defined in index.c */
-extern struct {
-	/* Requests to the key-value store */
-	int lookup_requests;
-	int update_requests;
-	int lookup_requests_for_unique;
-	/* Overheads of prefetching module */
-	int read_prefetching_units;
-}index_overhead;
+extern struct index_overhead index_overhead;
 
 void do_backup(char *path) {
 
@@ -177,9 +170,9 @@ void do_backup(char *path) {
 			jcr.total_container_num,
 			jcr.sparse_container_num,
 			jcr.inherited_sparse_num,
-			index_overhead.lookup_requests,
+			index_overhead.kvstore_lookup_requests,
 			index_overhead.lookup_requests_for_unique,
-			index_overhead.update_requests,
+			index_overhead.kvstore_update_requests,
 			index_overhead.read_prefetching_units,
 			(double) jcr.data_size * 1000000 / (1024 * 1024 * jcr.total_time));
 

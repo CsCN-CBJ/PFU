@@ -148,6 +148,7 @@ static void index_lookup_base(struct segment *s){
         if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
             continue;
 
+        index_overhead.index_lookup_requests++;
         /* First check it in the storage buffer */
         if(storage_buffer.container_buffer
                 && lookup_fingerprint_in_container(storage_buffer.container_buffer, &c->fp)){
@@ -174,6 +175,7 @@ static void index_lookup_base(struct segment *s){
         /* Check the fingerprint cache */
         if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
             /* Searching in fingerprint cache */
+            index_overhead.cache_lookup_requests++;
             int64_t id = fingerprint_cache_lookup(&c->fp);
             if(id != TEMPORARY_ID){
                 index_overhead.cache_hits++;
@@ -184,9 +186,10 @@ static void index_lookup_base(struct segment *s){
 
         if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
             /* Searching in key-value store */
+            index_overhead.kvstore_lookup_requests++;
             int64_t* ids = kvstore_lookup((char*)&c->fp);
             if(ids){
-                index_overhead.lookup_requests++;
+                index_overhead.kvstore_hits++;
                 /* prefetch the target unit */
                 fingerprint_cache_prefetch(ids[0]);
                 int64_t id = fingerprint_cache_lookup(&c->fp);
@@ -271,7 +274,7 @@ void index_update(GHashTable *features, int64_t id){
     gpointer key, value;
     g_hash_table_iter_init(&iter, features);
     while (g_hash_table_iter_next(&iter, &key, &value)) {
-        index_overhead.update_requests++;
+        index_overhead.kvstore_update_requests++;
         kvstore_update(key, id);
     }
 }
@@ -364,7 +367,7 @@ static void upgrade_index_update1(GSequence *chunks, int64_t id) {
     GSequenceIter *end = g_sequence_get_end_iter(chunks);
     for (; iter != end; iter = g_sequence_iter_next(iter)) {
         struct chunk* c = g_sequence_get(iter);        
-        upgrade_index_overhead.update_requests++;
+        upgrade_index_overhead.kvstore_update_requests++;
 
         v.id = id;
         memcpy(&v.fp, &c->fp, sizeof(fingerprint));
@@ -380,7 +383,7 @@ static void upgrade_index_update2(GSequence *chunks, int64_t id) {
     GSequenceIter *end = g_sequence_get_end_iter(chunks);
     for (; iter != end; iter = g_sequence_iter_next(iter)) {
         struct chunk* c = g_sequence_get(iter);        
-        upgrade_index_overhead.update_requests++;
+        upgrade_index_overhead.kvstore_update_requests++;
         
         upgrade_kvstore_update((char*)&c->old_fp, &id);
 
@@ -491,4 +494,10 @@ int upgrade_index_lookup(struct chunk* c) {
     TIMER_END(1, jcr.pre_dedup_time);
 
     return 1;
+}
+
+void print_index_overhead(FILE *fp, struct index_overhead *overhead) {
+    for(int i = 0; i < sizeof(struct index_overhead) / sizeof(uint32_t); i++) {
+        fprintf(fp, "%u ", ((uint32_t *)overhead)[i]);
+    }
 }

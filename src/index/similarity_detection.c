@@ -61,7 +61,7 @@ static void top_segment_select(GHashTable* features) {
 		/* Each feature is mapped to several segment IDs. */
 		segmentid *ids = kvstore_lookup((fingerprint*) key);
 		if (ids) {
-			index_overhead.lookup_requests++;
+			index_overhead.kvstore_lookup_requests++;
 			int i;
 			for (i = 0; i < destor.index_value_length; i++) {
 				if (ids[i] == TEMPORARY_ID)
@@ -181,7 +181,7 @@ void index_lookup_similarity_detection(struct segment *s){
 				/* Searching in key-value store */
 				int64_t* ids = kvstore_lookup((char*)&c->fp);
 				if(ids){
-					index_overhead.lookup_requests++;
+					index_overhead.kvstore_lookup_requests++;
 					/* prefetch the target unit */
 					fingerprint_cache_prefetch(ids[0]);
 					int64_t id = fingerprint_cache_lookup(&c->fp);

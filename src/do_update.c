@@ -293,11 +293,20 @@ void do_update(int revision, char *path) {
 			jcr.total_container_num,
 			jcr.sparse_container_num,
 			jcr.inherited_sparse_num,
-			index_overhead.lookup_requests,
+			index_overhead.kvstore_lookup_requests,
 			index_overhead.lookup_requests_for_unique,
-			index_overhead.update_requests,
+			index_overhead.kvstore_update_requests,
 			index_overhead.read_prefetching_units,
 			(double) jcr.data_size * 1000000 / (1024 * 1024 * jcr.total_time));
 
 	fclose(fp);
+
+	fp = fopen("log/update_result.log", "a");
+	print_index_overhead(fp, &upgrade_index_overhead);
+	fprintf(fp, "===== ");
+	print_index_overhead(fp, &index_overhead);
+	fprintf(fp, "===== ");
+	fprintf(fp, "%" PRIu32 "\n", jcr.hash_num);
+	fclose(fp);
+
 }

@@ -44,4 +44,6 @@ extern struct segment* (*segmenting)(struct chunk *c);
 gboolean g_feature_equal(char* a, char* b);
 guint g_feature_hash(char *feature);
 
+void print_index_overhead(FILE *fp, struct index_overhead *overhead);
+
 #endif

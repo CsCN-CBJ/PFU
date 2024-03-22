@@ -22,21 +22,19 @@ struct index_buffer {
 };
 
 struct index_overhead {
-    /* detailed statistics */
     uint32_t index_lookup_requests;
+    /* index_lookup_base */
+    uint32_t storage_buffer_hits;
+    uint32_t index_buffer_hits;
+    /* upgrade */
     uint32_t cache_lookup_requests;
     uint32_t cache_hits;
     uint32_t kvstore_lookup_requests;
     uint32_t kvstore_hits;
-    // index_lookup_base
-    uint32_t storage_buffer_hits;
-    uint32_t index_buffer_hits;
-    /* Requests to the key-value store */
-    int lookup_requests;
-    int update_requests;
-    int lookup_requests_for_unique;
-    /* Overheads of prefetching module */
-    int read_prefetching_units;
+    uint32_t lookup_requests_for_unique;
+    /* others */
+    uint32_t kvstore_update_requests;
+    uint32_t read_prefetching_units;
 };
 
 #endif
