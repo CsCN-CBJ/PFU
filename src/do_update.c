@@ -36,7 +36,7 @@ static void* read_recipe_thread(void *arg) {
 
 		TIMER_END(1, jcr.read_recipe_time);
 
-		sync_queue_push(update_recipe_queue, c);
+		sync_queue_push(upgrade_recipe_queue, c);
 
 		for (j = 0; j < r->chunknum; j++) {
 			TIMER_DECLARE(1);
@@ -45,25 +45,25 @@ static void* read_recipe_thread(void *arg) {
 			struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, 1, &k);
 
 			struct chunk* c = new_chunk(0);
-			memcpy(&c->fp, &cp->fp, sizeof(fingerprint));
-			assert(!memcmp(c->fp + 20, zero_fp, 12));
+			memcpy(&c->old_fp, &cp->fp, sizeof(fingerprint));
+			assert(!memcmp(c->old_fp + 20, zero_fp, 12));
 			c->size = cp->size;
 			c->id = cp->id;
 
 			TIMER_END(1, jcr.read_recipe_time);
 
-			sync_queue_push(update_recipe_queue, c);
+			sync_queue_push(upgrade_recipe_queue, c);
 			free(cp);
 		}
 
 		c = new_chunk(0);
 		SET_CHUNK(c, CHUNK_FILE_END);
-		sync_queue_push(update_recipe_queue, c);
+		sync_queue_push(upgrade_recipe_queue, c);
 
 		free_file_recipe_meta(r);
 	}
 
-	sync_queue_term(update_recipe_queue);
+	sync_queue_term(upgrade_recipe_queue);
 	return NULL;
 }
 
@@ -74,9 +74,9 @@ static void* lru_get_chunk_thread(void *arg) {
 			lookup_fingerprint_in_container);
 
 	struct chunk* c;
-	while ((c = sync_queue_pop(update_recipe_queue))) {
+	while ((c = sync_queue_pop(pre_dedup_queue))) {
 
-		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
+		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
 			sync_queue_push(upgrade_chunk_queue, c);
 			continue;
 		}
@@ -85,14 +85,14 @@ static void* lru_get_chunk_thread(void *arg) {
 		TIMER_BEGIN(1);
 
 		// if (destor.simulation_level >= SIMULATION_RESTORE) {
-		struct container *con = lru_cache_lookup(cache, &c->fp);
+		struct container *con = lru_cache_lookup(cache, &c->old_fp);
 		if (!con) {
 			con = retrieve_container_by_id(c->id);
 			lru_cache_insert(cache, con, NULL, NULL);
 			jcr.read_container_num++;
 		}
-		struct chunk *rc = get_chunk_in_container(con, &c->fp);
-		memcpy(rc->old_fp, c->fp, sizeof(fingerprint));
+		struct chunk *rc = get_chunk_in_container(con, &c->old_fp);
+		memcpy(rc->old_fp, c->old_fp, sizeof(fingerprint));
 		rc->id = TEMPORARY_ID;
 		assert(rc);
 		TIMER_END(1, jcr.read_chunk_time);
@@ -114,7 +114,7 @@ static void* lru_get_chunk_thread(void *arg) {
 
 static void* pre_dedup_thread(void *arg) {
 	while (1) {
-		struct chunk* c = sync_queue_pop(upgrade_chunk_queue);
+		struct chunk* c = sync_queue_pop(upgrade_recipe_queue);
 
 		if (c == NULL) {
 			sync_queue_term(pre_dedup_queue);
@@ -147,7 +147,7 @@ static void* pre_dedup_thread(void *arg) {
 static void* sha256_thread(void* arg) {
 	// char code[41];
 	while (1) {
-		struct chunk* c = sync_queue_pop(pre_dedup_queue);
+		struct chunk* c = sync_queue_pop(upgrade_chunk_queue);
 
 		if (c == NULL) {
 			sync_queue_term(hash_queue);
@@ -193,7 +193,7 @@ void do_update(int revision, char *path) {
 	destor_log(DESTOR_NOTICE, "new backup path: %s", jcr.new_bv->path);
 	destor_log(DESTOR_NOTICE, "update to: %s", jcr.path);
 
-	update_recipe_queue = sync_queue_new(100);
+	upgrade_recipe_queue = sync_queue_new(100);
 	upgrade_chunk_queue = sync_queue_new(100);
 	pre_dedup_queue = sync_queue_new(100);
 	hash_queue = sync_queue_new(100);
@@ -206,8 +206,8 @@ void do_update(int revision, char *path) {
     jcr.status = JCR_STATUS_RUNNING;
 	pthread_t recipe_t, read_t, pre_dedup_t, hash_t;
 	pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
-    pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
     pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
+    pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
     pthread_create(&hash_t, NULL, sha256_thread, NULL);
 	start_dedup_phase();
 	start_rewrite_phase();
@@ -222,7 +222,7 @@ void do_update(int revision, char *path) {
     fprintf(stderr, "%" PRId64 " bytes, %" PRId32 " chunks, %d files processed\n", 
         jcr.data_size, jcr.chunk_num, jcr.file_num);
 
-	assert(sync_queue_size(update_recipe_queue) == 0);
+	assert(sync_queue_size(upgrade_recipe_queue) == 0);
 	assert(sync_queue_size(upgrade_chunk_queue) == 0);
 	assert(sync_queue_size(pre_dedup_queue) == 0);
 	assert(sync_queue_size(hash_queue) == 0);
@@ -232,8 +232,8 @@ void do_update(int revision, char *path) {
 	free_backup_version(jcr.new_bv);
 
 	pthread_join(recipe_t, NULL);
-	pthread_join(read_t, NULL);
 	pthread_join(pre_dedup_t, NULL);
+	pthread_join(read_t, NULL);
 	pthread_join(hash_t, NULL);
 	stop_dedup_phase();
 	stop_rewrite_phase();
@@ -261,8 +261,14 @@ void do_update(int revision, char *path) {
 	printf("read_recipe_time : %.3fs, %.2fMB/s\n",
 			jcr.read_recipe_time / 1000000,
 			jcr.data_size * 1000000 / jcr.read_recipe_time / 1024 / 1024);
+	printf("pre_dedup_time : %.3fs, %.2fMB/s\n", jcr.pre_dedup_time / 1000000,
+			jcr.data_size * 1000000 / jcr.pre_dedup_time / 1024 / 1024);
 	printf("read_chunk_time : %.3fs, %.2fMB/s\n", jcr.read_chunk_time / 1000000,
 			jcr.data_size * 1000000 / jcr.read_chunk_time / 1024 / 1024);
+	printf("hash_time : %.3fs, %.2fMB/s\n", jcr.hash_time / 1000000,
+			jcr.data_size * 1000000 / jcr.hash_time / 1024 / 1024);
+	printf("dedup_time : %.3fs, %.2fMB/s\n", jcr.dedup_time / 1000000,
+			jcr.data_size * 1000000 / jcr.dedup_time / 1024 / 1024);
 	printf("write_chunk_time : %.3fs, %.2fMB/s\n",
 			jcr.write_chunk_time / 1000000,
 			jcr.data_size * 1000000 / jcr.write_chunk_time / 1024 / 1024);
@@ -306,6 +312,7 @@ void do_update(int revision, char *path) {
 	fprintf(fp, "===== ");
 	print_index_overhead(fp, &index_overhead);
 	fprintf(fp, "===== ");
+	fprintf(fp, "%" PRIu32 " ", jcr.read_container_num);
 	fprintf(fp, "%" PRIu32 "\n", jcr.hash_num);
 	fclose(fp);
 

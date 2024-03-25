@@ -10,7 +10,7 @@
 
 #include "utils/sync_queue.h"
 
-SyncQueue *update_recipe_queue;
+SyncQueue *upgrade_recipe_queue;
 SyncQueue *upgrade_chunk_queue;
 SyncQueue *pre_dedup_queue;
 
