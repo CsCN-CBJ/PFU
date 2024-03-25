@@ -151,6 +151,7 @@ static void index_lookup_base(struct segment *s){
         index_overhead.index_lookup_requests++;
         /* First check it in the storage buffer */
         if(storage_buffer.container_buffer
+                && !CHECK_CHUNK(c, CHUNK_DUPLICATE)
                 && lookup_fingerprint_in_container(storage_buffer.container_buffer, &c->fp)){
             index_overhead.storage_buffer_hits++;
             c->id = get_container_id(storage_buffer.container_buffer);
@@ -398,9 +399,9 @@ static void upgrade_index_update2(GSequence *chunks, int64_t id) {
 }
 
 void upgrade_index_update(GSequence *chunks, int64_t id) {
-    if (destor.upgrade_level == 1) {
+    if (destor.upgrade_level == UPGRADE_1D_RELATION) {
         upgrade_index_update1(chunks, id);
-    } else if (destor.upgrade_level == 2) {
+    } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
         upgrade_index_update2(chunks, id);
     }
 }
@@ -435,7 +436,7 @@ void _upgrade_index_lookup(struct chunk *c){
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in key-value store */
-        if (destor.upgrade_level == 1) {
+        if (destor.upgrade_level == UPGRADE_1D_RELATION) {
             upgrade_index_value_t* v = upgrade_kvstore_lookup(&c->old_fp);
             upgrade_index_overhead.kvstore_lookup_requests++;
             if(v) {
@@ -446,7 +447,7 @@ void _upgrade_index_lookup(struct chunk *c){
                 memcpy(&c->fp, &v->fp, sizeof(fingerprint));
                 SET_CHUNK(c, CHUNK_DUPLICATE);
             }
-        } else if (destor.upgrade_level == 2) {
+        } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
             int64_t* ids = upgrade_kvstore_lookup((char*)&c->old_fp);
             upgrade_index_overhead.kvstore_lookup_requests++;
             if(ids){

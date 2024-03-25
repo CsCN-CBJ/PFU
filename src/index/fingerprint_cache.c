@@ -111,7 +111,7 @@ int compare_upgrade_index_value(upgrade_index_kv_t *kv, fingerprint *old_fp) {
 }
 
 void init_upgrade_fingerprint_cache() {
-	if (destor.upgrade_level >= 1) {
+	if (destor.upgrade_level != UPGRADE_NAIVE) {
 		destor.index_cache_size *= 888; // TODO: 修改这个数值
 	}
 	upgrade_lru_queue = new_lru_cache(destor.index_cache_size,

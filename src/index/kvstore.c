@@ -29,9 +29,9 @@ void init_kvstore() {
     switch(destor.index_key_value_store){
     	case INDEX_KEY_VALUE_HTABLE:
     		init_kvstore_htable();
-			if (destor.upgrade_level == 1) {
+			if (destor.upgrade_level == UPGRADE_1D_RELATION) {
 				init_upgrade_kvstore_htable(sizeof(upgrade_index_value_t));
-			} else if (destor.upgrade_level == 2) {
+			} else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
 				init_upgrade_kvstore_htable(sizeof(int64_t));
 			}
 

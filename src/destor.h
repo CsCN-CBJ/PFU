@@ -47,6 +47,11 @@ int job;
 #define DESTOR_UPDATE 5
 #define DESTOR_NEW_RESTORE 6
 
+/* upgrade level */
+#define UPGRADE_NAIVE 0
+#define UPGRADE_1D_RELATION 1
+#define UPGRADE_2D_RELATION 2
+
 /* Log levels */
 #define DESTOR_DEBUG 0
 #define DESTOR_VERBOSE 1

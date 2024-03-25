@@ -126,7 +126,7 @@ static void* pre_dedup_thread(void *arg) {
 			continue;
 		}
 
-		if (destor.upgrade_level >= 1) {
+		if (destor.upgrade_level != UPGRADE_NAIVE) {
 			/* Each duplicate chunk will be marked. */
 			pthread_mutex_lock(&upgrade_index_lock.mutex);
 			// while (upgrade_index_lookup(c) == 0) { // 目前永远是1, 所以不用管cond
