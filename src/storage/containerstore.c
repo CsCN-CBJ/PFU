@@ -411,7 +411,7 @@ struct chunk* get_chunk_in_container(struct container* c, fingerprint *fp) {
 
 	ck->size = me->len;
 	ck->id = c->meta.id;
-	memcpy(&ck->fp, &fp, sizeof(fingerprint));
+	memcpy(&ck->fp, fp, sizeof(fingerprint));
 
 	return ck;
 }
