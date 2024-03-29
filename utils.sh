@@ -3,7 +3,11 @@
 function testInit() {
     set -e
 
-    TEST_DIR=~/destor/temp
+    if [ -z "$1" ]; then
+        TEST_DIR=~/destor/temp
+    else
+        TEST_DIR=$1
+    fi
     WORKING_DIR=${TEST_DIR}/working
     SRC_DIR=${TEST_DIR}/src
     DST_DIR=${TEST_DIR}/dst
