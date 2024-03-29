@@ -5,6 +5,7 @@
 #include "rewrite_phase.h"
 #include "backup.h"
 #include "index/index.h"
+#include "index/fingerprint_cache.h"
 
 static pthread_t filter_t;
 static int64_t chunk_num;
@@ -23,6 +24,68 @@ extern struct {
 	GCond cond; // index buffer is not full
 	int wait_threshold;
 } index_lock, upgrade_index_lock;
+
+static void flush_container() {
+    if(destor.index_category[1] != INDEX_CATEGORY_PHYSICAL_LOCALITY) return;
+
+    GHashTable *features = sampling(storage_buffer.chunks,
+            g_sequence_get_length(storage_buffer.chunks));
+    index_update(features, get_container_id(storage_buffer.container_buffer));
+
+    // do_update index
+    if (job == DESTOR_UPDATE && destor.upgrade_level == UPGRADE_1D_RELATION) {
+        pthread_mutex_lock(&upgrade_index_lock.mutex);
+        upgrade_index_update(storage_buffer.chunks, get_container_id(storage_buffer.container_buffer));
+        pthread_mutex_unlock(&upgrade_index_lock.mutex);
+    }
+
+    g_hash_table_destroy(features);
+    g_sequence_free(storage_buffer.chunks);
+    storage_buffer.chunks = g_sequence_new(free_chunk);
+
+    write_container_async(storage_buffer.container_buffer);
+    storage_buffer.container_buffer = create_container();
+}
+
+static void append_chunk_to_buffer(struct chunk* c) {
+    /*
+    * If the chunk is unique, or be fragmented and not denied,
+    * we write it to a container.
+    * Fragmented indicates: sparse, or out of order and not in cache,
+    */
+    if (storage_buffer.container_buffer == NULL){
+        storage_buffer.container_buffer = create_container();
+        if(destor.index_category[1] == INDEX_CATEGORY_PHYSICAL_LOCALITY)
+            storage_buffer.chunks = g_sequence_new(free_chunk);
+    }
+
+    if (container_overflow(storage_buffer.container_buffer, c->size)) {
+        flush_container();
+    }
+
+    if(add_chunk_to_container(storage_buffer.container_buffer, c)){
+        if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+            jcr.unique_chunk_num++;
+            jcr.unique_data_size += c->size;
+        }
+
+        if(destor.index_category[1] == INDEX_CATEGORY_PHYSICAL_LOCALITY){
+            struct chunk* ck = new_chunk(0);
+            assert(ck);
+            memcpy(&ck->fp, &c->fp, sizeof(fingerprint));
+            memcpy(&ck->old_fp, &c->old_fp, sizeof(fingerprint));
+            g_sequence_append(storage_buffer.chunks, ck);
+        }
+
+        VERBOSE("Filter phase: Write %dth chunk to container %lld",
+                chunk_num, c->id);
+    }else{
+        VERBOSE("Filter phase: container %lld already has this chunk", c->id);
+        c->id = get_container_id(storage_buffer.container_buffer);
+        SET_CHUNK(c, CHUNK_DUPLICATE);
+    }
+    chunk_num++; // BUGS: 可能会多次++
+}
 
 /*
  * When a container buffer is full, we push it into container_queue.
@@ -349,18 +412,260 @@ static void* filter_thread(void *arg) {
     return NULL;
 }
 
+static void* filter_thread_simplified(void *arg) {
+    int enable_rewrite = 1;
+    struct fileRecipeMeta* r = NULL;
+    GHashTable *htb = NULL;
+    struct backupVersion* bv = jcr.new_bv;
+    assert(destor.index_category[1] == INDEX_CATEGORY_PHYSICAL_LOCALITY);
+    assert(job == DESTOR_UPDATE && destor.upgrade_level != UPGRADE_NAIVE);
+
+    while (1) {
+        struct chunk* c = sync_queue_pop(rewrite_queue);
+
+        if (c == NULL)
+            /* backup job finish */
+            break;
+
+        /* reconstruct a segment */
+        struct segment* s = new_segment();
+
+        /* segment head */
+        assert(CHECK_CHUNK(c, CHUNK_SEGMENT_START));
+        free_chunk(c);
+
+        c = sync_queue_pop(rewrite_queue);
+        while (!(CHECK_CHUNK(c, CHUNK_SEGMENT_END))) {
+            g_sequence_append(s->chunks, c);
+            if (!CHECK_CHUNK(c, CHUNK_FILE_START)
+                    && !CHECK_CHUNK(c, CHUNK_FILE_END))
+                s->chunk_num++;
+
+            c = sync_queue_pop(rewrite_queue);
+        }
+        free_chunk(c);
+
+        pthread_mutex_lock(&index_lock.mutex);
+
+        TIMER_DECLARE(1);
+        TIMER_BEGIN(1);
+        /* This function will check the fragmented chunks
+         * that would be rewritten later.
+         * If we find an early copy of the chunk in earlier segments,
+         * has been rewritten,
+         * the rewrite request for it will be denied. */
+
+    	GSequenceIter *iter = g_sequence_get_begin_iter(s->chunks);
+    	GSequenceIter *end = g_sequence_get_end_iter(s->chunks);
+        for (; iter != end; iter = g_sequence_iter_next(iter)) {
+            c = g_sequence_get(iter);
+
+    		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
+    			continue;
+
+            /* A fragmented chunk will be denied if it has been rewritten recently */
+            if (!CHECK_CHUNK(c, CHUNK_DUPLICATE) 
+					|| (!CHECK_CHUNK(c, CHUNK_REWRITE_DENIED)
+            		&& (CHECK_CHUNK(c, CHUNK_SPARSE)
+                    || (enable_rewrite && CHECK_CHUNK(c, CHUNK_OUT_OF_ORDER)
+                        && !CHECK_CHUNK(c, CHUNK_IN_CACHE))))) {
+
+                append_chunk_to_buffer(c);
+
+            }else{
+                if(CHECK_CHUNK(c, CHUNK_REWRITE_DENIED)){
+                    VERBOSE("Filter phase: %lldth fragmented chunk is denied", chunk_num);
+                }else if (CHECK_CHUNK(c, CHUNK_OUT_OF_ORDER)) {
+                    VERBOSE("Filter phase: %lldth chunk in out-of-order container %lld is already cached",
+                            chunk_num, c->id);
+                }
+            }
+
+            assert(c->id != TEMPORARY_ID);
+
+            chunk_num++;
+        }
+
+        /* Write a SEGMENT_BEGIN */
+        segmentid sid = append_segment_flag(bv, CHUNK_SEGMENT_START, s->chunk_num);
+
+        /* Write recipe */
+    	iter = g_sequence_get_begin_iter(s->chunks);
+    	end = g_sequence_get_end_iter(s->chunks);
+        for (; iter != end; iter = g_sequence_iter_next(iter)) {
+            c = g_sequence_get(iter);
+
+        	if(r == NULL){
+        		assert(CHECK_CHUNK(c,CHUNK_FILE_START));
+        		r = new_file_recipe_meta(c->data);
+        	}else if(!CHECK_CHUNK(c,CHUNK_FILE_END)){
+        		struct chunkPointer cp;
+        		cp.id = c->id;
+        		assert(cp.id>=0);
+        		memcpy(&cp.fp, &c->fp, sizeof(fingerprint));
+        		cp.size = c->size;
+        		append_n_chunk_pointers(bv, &cp ,1);
+        		r->chunknum++;
+        		r->filesize += c->size;
+
+    	    	jcr.chunk_num++;
+	    	    jcr.data_size += c->size;
+
+        	}else{
+        		assert(CHECK_CHUNK(c,CHUNK_FILE_END));
+        		append_file_recipe_meta(bv, r);
+        		free_file_recipe_meta(r);
+        		r = NULL;
+
+	            jcr.file_num++;
+        	}
+        }
+
+       	/* Write a SEGMENT_END */
+       	append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
+
+        free_segment(s);
+
+        TIMER_END(1, jcr.filter_time);
+        pthread_mutex_unlock(&index_lock.mutex);
+
+    }
+
+    if (storage_buffer.container_buffer
+    		&& !container_empty(storage_buffer.container_buffer)){
+        flush_container();
+    }
+
+    /* All files done */
+    jcr.status = JCR_STATUS_DONE;
+    return NULL;
+}
+
+static void* filter_thread_2D(void* arg) {
+    struct fileRecipeMeta* r = NULL;
+	struct backupVersion* bv = jcr.new_bv;
+	GHashTable *htb = NULL;
+	GSequence *file_chunks = NULL;
+	int in_container = FALSE;
+	while (1) {
+		struct chunk* c = sync_queue_pop(hash_queue);
+
+		if (c == NULL) {
+			sync_queue_term(hash_queue);
+			break;
+		}
+
+		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
+			assert(r == NULL);
+			r = new_file_recipe_meta(c->data); // filename
+			file_chunks = g_sequence_new(free_chunk);
+			free_chunk(c);
+		} else if (CHECK_CHUNK(c, CHUNK_FILE_END)) {
+            assert(!in_container);
+			free_chunk(c);
+
+			append_segment_flag(bv, CHUNK_SEGMENT_START, g_sequence_get_length(file_chunks));
+			// iter seq
+			GSequenceIter *iter = g_sequence_get_begin_iter(file_chunks);
+			GSequenceIter *end = g_sequence_get_end_iter(file_chunks);
+			for (; iter != end; iter = g_sequence_iter_next(iter)) {
+				c = g_sequence_get(iter);
+				assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+				struct chunkPointer cp;
+        		cp.id = c->id;
+        		assert(cp.id>=0);
+        		memcpy(&cp.fp, &c->fp, sizeof(fingerprint));
+        		cp.size = c->size;
+        		append_n_chunk_pointers(bv, &cp ,1);
+        		r->chunknum++;
+        		r->filesize += c->size;
+
+    	    	jcr.chunk_num++;
+	    	    jcr.data_size += c->size;
+                free_chunk(c);
+			}
+			append_file_recipe_meta(bv, r);
+			free_file_recipe_meta(r);
+			r = NULL;
+
+			append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
+			jcr.file_num++;
+		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
+			assert(!in_container);
+			assert(htb == NULL);
+			in_container = TRUE;
+			htb = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
+            free_chunk(c);
+		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_END)) {
+			assert(in_container);
+			assert(htb);
+			in_container = FALSE;
+            assert(c->id>=0);
+			write_upgrade_index_container(htb, c->id); // old container id
+			htb = NULL;
+            free_chunk(c);
+		} else if (in_container){
+			// container chunks
+			append_chunk_to_buffer(c);
+			assert(c->id >= 0);
+
+	        upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t));
+			memcpy(kv->old_fp, c->old_fp, sizeof(fingerprint));
+			memcpy(kv->value.fp, c->fp, sizeof(fingerprint));
+			kv->value.id = c->id;
+			assert(kv->value.id >= 0);
+			g_hash_table_insert(htb, &kv->old_fp, &kv->value);
+            assert(g_hash_table_lookup(htb, &kv->old_fp) == &kv->value);
+            free_chunk(c);
+		} else {
+			// recipe chunks
+			if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+				GHashTable* con = retrieve_upgrade_index_container_by_id(c->id);
+				assert(con);
+                upgrade_index_value_t *v;
+				v = g_hash_table_lookup(con, &c->old_fp);
+				assert(v);
+
+				c->id = v->id;
+				memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+				SET_CHUNK(c, CHUNK_DUPLICATE);
+			}
+            assert(c->id>=0);
+			g_sequence_append(file_chunks, c);
+
+		}
+	}
+    if (storage_buffer.container_buffer
+    		&& !container_empty(storage_buffer.container_buffer)){
+        flush_container();
+    }
+    /* All files done */
+    jcr.status = JCR_STATUS_DONE;
+    return NULL;
+}
+
 void start_filter_phase() {
 
 	storage_buffer.container_buffer = NULL;
 
     init_restore_aware();
 
-    pthread_create(&filter_t, NULL, filter_thread, NULL);
+    if (job == DESTOR_UPDATE) {
+        if (destor.upgrade_level == UPGRADE_2D_RELATION) 
+            pthread_create(&filter_t, NULL, filter_thread_2D, NULL);
+        else if (destor.upgrade_level == UPGRADE_1D_RELATION)
+            pthread_create(&filter_t, NULL, filter_thread_simplified, NULL);
+        else
+            pthread_create(&filter_t, NULL, filter_thread, NULL);
+    } else {
+        pthread_create(&filter_t, NULL, filter_thread, NULL);
+    }
 }
 
 void stop_filter_phase() {
     pthread_join(filter_t, NULL);
-    close_har();
+    if (destor.upgrade_level != UPGRADE_2D_RELATION)
+        close_har();
 	NOTICE("filter phase stops successfully!");
 
 }

@@ -189,6 +189,8 @@ int job;
 #define CHUNK_FILE_END (0x0002)
 #define CHUNK_SEGMENT_START (0x0004)
 #define CHUNK_SEGMENT_END (0x0008)
+#define CHUNK_CONTAINER_START (0x0010) /* 只在upgrade时使用, 不会与下面的冲突 */
+#define CHUNK_CONTAINER_END (0x0020)
 
 /* Flags for restore */
 #define CHUNK_WAIT 0x0010
@@ -197,6 +199,14 @@ int job;
 #define SET_CHUNK(c, f) (c->flag |= f)
 #define UNSET_CHUNK(c, f) (c->flag &= ~f)
 #define CHECK_CHUNK(c, f) (c->flag & f)
+#define IS_SIGNAL_CHUNK(c) (\
+CHECK_CHUNK(c, CHUNK_FILE_START)||\
+CHECK_CHUNK(c, CHUNK_FILE_END)||\
+CHECK_CHUNK(c, CHUNK_SEGMENT_START)||\
+CHECK_CHUNK(c, CHUNK_SEGMENT_END)||\
+CHECK_CHUNK(c, CHUNK_CONTAINER_START)||\
+CHECK_CHUNK(c, CHUNK_CONTAINER_END)\
+)
 
 struct destor {
 	sds working_directory;
@@ -298,7 +308,7 @@ typedef int64_t segmentid;
 
 struct chunk {
 	int32_t size;
-	int flag;
+	uint32_t flag;
 	containerid id;
 	fingerprint fp;
 	fingerprint old_fp;

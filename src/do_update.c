@@ -112,6 +112,74 @@ static void* lru_get_chunk_thread(void *arg) {
 	return NULL;
 }
 
+static void* lru_get_chunk_thread_2D(void *arg) {
+	// 已经发送的container id
+	GHashTable *htb = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
+
+	struct chunk *c, *ck; // c: get from queue, ck: temp chunk
+	while ((c = sync_queue_pop(pre_dedup_queue))) {
+
+		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+			sync_queue_push(upgrade_chunk_queue, c);
+			continue;
+		}
+
+		TIMER_DECLARE(1);
+		TIMER_BEGIN(1);
+
+		// 已经发送过的container不再发送
+		// 已发送但不重复的chunk是因为后面还没处理完, 直接发过去就行
+		assert(c->id >= 0);
+		if (!g_hash_table_lookup(htb, &c->id)) {
+			containerid *id = malloc(sizeof(containerid));
+			*id = c->id;
+			g_hash_table_insert(htb, id, "1");
+			struct container *con = retrieve_container_by_id(c->id);
+			assert(con);
+			assert(g_hash_table_contains(con->meta.map, &c->old_fp));
+
+			// send container
+			ck = new_chunk(0);
+			SET_CHUNK(ck, CHUNK_CONTAINER_START);
+			sync_queue_push(upgrade_chunk_queue, ck);
+
+			GHashTableIter iter;
+			gpointer key, value;
+			g_hash_table_iter_init(&iter, con->meta.map);
+			while(g_hash_table_iter_next(&iter, &key, &value)){
+				ck = get_chunk_in_container(con, key);
+				assert(ck);
+				memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
+				ck->id = TEMPORARY_ID;
+				assert(!memcmp(ck->fp, key, sizeof(fingerprint)));
+				assert(!memcmp(ck->old_fp, key, sizeof(fingerprint)));
+				assert(!memcmp(ck->old_fp, ck->fp, sizeof(fingerprint)));
+				sync_queue_push(upgrade_chunk_queue, ck);
+			}
+
+			ck = new_chunk(0);
+			ck->id = c->id;
+			assert(ck->id >= 0);
+			SET_CHUNK(ck, CHUNK_CONTAINER_END);
+			sync_queue_push(upgrade_chunk_queue, ck);
+
+			free_container(con);
+			jcr.read_container_num++;
+			
+		}
+		sync_queue_push(upgrade_chunk_queue, c);
+
+		TIMER_END(1, jcr.read_chunk_time);
+	}
+
+	sync_queue_term(upgrade_chunk_queue);
+
+	g_hash_table_destroy(htb);
+
+	return NULL;
+}
+
+
 static void* pre_dedup_thread(void *arg) {
 	while (1) {
 		struct chunk* c = sync_queue_pop(upgrade_recipe_queue);
@@ -146,6 +214,8 @@ static void* pre_dedup_thread(void *arg) {
 
 static void* sha256_thread(void* arg) {
 	// char code[41];
+	// 只有计算在container内的chunk的hash, 如果不是2D, 则始终为TRUE
+	int in_container = destor.upgrade_level == UPGRADE_2D_RELATION ? FALSE : TRUE;
 	while (1) {
 		struct chunk* c = sync_queue_pop(upgrade_chunk_queue);
 
@@ -154,11 +224,18 @@ static void* sha256_thread(void* arg) {
 			break;
 		}
 
-		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+		if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
+			in_container = TRUE;
+		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_END)) {
+			in_container = FALSE;
+		}
+
+		if (!in_container || IS_SIGNAL_CHUNK(c) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
 			sync_queue_push(hash_queue, c);
 			continue;
 		}
 
+		assert(c->id == TEMPORARY_ID);
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
 		jcr.hash_num++;
@@ -207,10 +284,17 @@ void do_update(int revision, char *path) {
 	pthread_t recipe_t, read_t, pre_dedup_t, hash_t;
 	pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
     pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
-    pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
+	if (destor.upgrade_level == UPGRADE_2D_RELATION) {
+		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
+	} else {
+		pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
+	}
     pthread_create(&hash_t, NULL, sha256_thread, NULL);
-	start_dedup_phase();
-	start_rewrite_phase();
+
+	if (destor.upgrade_level != UPGRADE_2D_RELATION) {
+		start_dedup_phase();
+		start_rewrite_phase();
+	}
 	start_filter_phase();
 
     do{
@@ -235,8 +319,10 @@ void do_update(int revision, char *path) {
 	pthread_join(pre_dedup_t, NULL);
 	pthread_join(read_t, NULL);
 	pthread_join(hash_t, NULL);
-	stop_dedup_phase();
-	stop_rewrite_phase();
+	if (destor.upgrade_level != UPGRADE_2D_RELATION) {
+		stop_dedup_phase();
+		stop_rewrite_phase();
+	}
 	stop_filter_phase();
 
 	TIMER_END(1, jcr.total_time);
