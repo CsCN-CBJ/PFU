@@ -18,7 +18,7 @@ static GHashTable *htable;
 static GHashTable *upgrade_htable;
 
 static int32_t kvpair_size;
-static int32_t upgrade_kvpair_size;
+static int32_t upgrade_key_size;
 static int32_t upgrade_value_size;
 
 /*
@@ -209,14 +209,18 @@ void kvstore_htable_delete(char* key, int64_t id){
 	}
 }
 
-static kvpair new_upgrade_kvpair() {
-	return calloc(1, upgrade_kvpair_size);
+gboolean g_upgrade_feature_equal(char* a, char* b){
+	return !memcmp(a, b, upgrade_key_size);
 }
 
-void init_upgrade_kvstore_htable(int32_t value_size) {
+static kvpair new_upgrade_kvpair() {
+	return calloc(1, upgrade_key_size + upgrade_value_size);
+}
+
+void init_upgrade_kvstore_htable(int32_t key_size, int32_t value_size) {
+	upgrade_key_size = key_size;
 	upgrade_value_size = value_size;
-	upgrade_kvpair_size = destor.index_key_size + upgrade_value_size;
-	upgrade_htable = g_hash_table_new_full(g_int_hash, g_feature_equal,
+	upgrade_htable = g_hash_table_new_full(g_int_hash, g_upgrade_feature_equal,
 			free_kvpair, NULL);
 }
 
@@ -227,15 +231,15 @@ void close_upgrade_kvstore_htable() {
 
 void* upgrade_kvstore_htable_lookup(char* key) {
 	kvpair kv = g_hash_table_lookup(upgrade_htable, key);
-	return kv ? (void*)(get_value(kv)) : NULL;
+	return kv ? (void*)(kv + upgrade_key_size) : NULL;
 }
 
 void upgrade_kvstore_htable_update(char* key, void* value) {
 	kvpair kv = g_hash_table_lookup(upgrade_htable, key);
 	if (!kv) {
 		kv = new_upgrade_kvpair();
-		memcpy(get_key(kv), key, destor.index_key_size);
-		g_hash_table_replace(upgrade_htable, get_key(kv), kv);
+		memcpy(kv, key, upgrade_key_size);
+		g_hash_table_replace(upgrade_htable, kv, kv);
 	}
-	memcpy(get_value(kv), value, upgrade_value_size);
+	memcpy(kv + upgrade_key_size, value, upgrade_value_size);
 }

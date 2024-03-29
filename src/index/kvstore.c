@@ -6,7 +6,7 @@ extern int64_t* kvstore_htable_lookup(char* key);
 extern void kvstore_htable_update(char* key, int64_t id);
 extern void kvstore_htable_delete(char* key, int64_t id);
 
-extern void init_upgrade_kvstore_htable(int32_t value_size);
+extern void init_upgrade_kvstore_htable(int32_t key_size, int32_t value_size);
 extern void close_upgrade_kvstore_htable();
 extern void* upgrade_kvstore_htable_lookup(char* key);
 extern void upgrade_kvstore_htable_update(char* key, void* value);
@@ -30,9 +30,9 @@ void init_kvstore() {
     	case INDEX_KEY_VALUE_HTABLE:
     		init_kvstore_htable();
 			if (destor.upgrade_level == UPGRADE_1D_RELATION) {
-				init_upgrade_kvstore_htable(sizeof(upgrade_index_value_t));
+				init_upgrade_kvstore_htable(destor.index_key_size, sizeof(upgrade_index_value_t));
 			} else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
-				init_upgrade_kvstore_htable(sizeof(int64_t));
+				init_upgrade_kvstore_htable(sizeof(int64_t), sizeof(int64_t));
 			}
 
     		close_kvstore = close_kvstore_htable;
