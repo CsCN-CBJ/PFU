@@ -117,9 +117,9 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 	GHashTable *htb = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 
 	struct chunk *c, *ck; // c: get from queue, ck: temp chunk
-	while ((c = sync_queue_pop(pre_dedup_queue))) {
+	while ((c = sync_queue_pop(upgrade_recipe_queue))) {
 
-		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
 			sync_queue_push(upgrade_chunk_queue, c);
 			continue;
 		}
@@ -128,7 +128,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		TIMER_BEGIN(1);
 
 		// 已经发送过的container不再发送
-		// 已发送但不重复的chunk是因为后面还没处理完, 直接发过去就行
 		assert(c->id >= 0);
 		if (!g_hash_table_lookup(htb, &c->id)) {
 			containerid *id = malloc(sizeof(containerid));
@@ -136,7 +135,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 			g_hash_table_insert(htb, id, "1");
 			struct container *con = retrieve_container_by_id(c->id);
 			assert(con);
-			assert(g_hash_table_contains(con->meta.map, &c->old_fp));
 
 			// send container
 			ck = new_chunk(0);
@@ -151,15 +149,11 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 				assert(ck);
 				memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
 				ck->id = TEMPORARY_ID;
-				assert(!memcmp(ck->fp, key, sizeof(fingerprint)));
-				assert(!memcmp(ck->old_fp, key, sizeof(fingerprint)));
-				assert(!memcmp(ck->old_fp, ck->fp, sizeof(fingerprint)));
 				sync_queue_push(upgrade_chunk_queue, ck);
 			}
 
 			ck = new_chunk(0);
 			ck->id = c->id;
-			assert(ck->id >= 0);
 			SET_CHUNK(ck, CHUNK_CONTAINER_END);
 			sync_queue_push(upgrade_chunk_queue, ck);
 
@@ -283,10 +277,10 @@ void do_update(int revision, char *path) {
     jcr.status = JCR_STATUS_RUNNING;
 	pthread_t recipe_t, read_t, pre_dedup_t, hash_t;
 	pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
-    pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 	if (destor.upgrade_level == UPGRADE_2D_RELATION) {
 		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
 	} else {
+    	pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 		pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
 	}
     pthread_create(&hash_t, NULL, sha256_thread, NULL);

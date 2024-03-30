@@ -619,17 +619,17 @@ static void* filter_thread_2D(void* arg) {
             free_chunk(c);
 		} else {
 			// recipe chunks
-			if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-				GHashTable* con = retrieve_upgrade_index_container_by_id(c->id);
-				assert(con);
-                upgrade_index_value_t *v;
-				v = g_hash_table_lookup(con, &c->old_fp);
-				assert(v);
+            assert(!CHECK_CHUNK(c, CHUNK_DUPLICATE));
 
-				c->id = v->id;
-				memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-				SET_CHUNK(c, CHUNK_DUPLICATE);
-			}
+            GHashTable* con = retrieve_upgrade_index_container_by_id(c->id);
+            assert(con);
+            upgrade_index_value_t *v = g_hash_table_lookup(con, &c->old_fp);
+            assert(v);
+
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+            SET_CHUNK(c, CHUNK_DUPLICATE);
+
             assert(c->id>=0);
 			g_sequence_append(file_chunks, c);
 
