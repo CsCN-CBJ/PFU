@@ -13,6 +13,7 @@
 
 struct lruCache {
 	GList *elem_queue;
+	GList *elem_queue_tail;
 
 	int max_size; // less then zero means infinite cache
 	int size;

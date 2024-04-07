@@ -18,6 +18,7 @@ struct lruCache* new_lru_cache(int size, void (*free_elem)(void *),
 	struct lruCache* c = (struct lruCache*) malloc(sizeof(struct lruCache));
 
 	c->elem_queue = NULL;
+	c->elem_queue_tail = NULL;
 
 	c->max_size = size;
 	c->size = 0;
@@ -44,6 +45,10 @@ void* lru_cache_lookup(struct lruCache* c, void* user_data) {
 		elem = g_list_next(elem);
 	}
 	if (elem) {
+		if (!elem->next && elem->prev) {
+			// 是尾部 且不是头部(头部不用动)
+			c->elem_queue_tail = elem->prev;
+		}
 		c->elem_queue = g_list_remove_link(c->elem_queue, elem);
 		c->elem_queue = g_list_concat(elem, c->elem_queue);
 		c->hit_count++;
@@ -79,6 +84,10 @@ void* lru_cache_hits(struct lruCache* c, void* user_data,
 		elem = g_list_next(elem);
 	}
 	if (elem) {
+		if (!elem->next && elem->prev) {
+			// 是尾部 且不是头部(头部不用动)
+			c->elem_queue_tail = elem->prev;
+		}
 		c->elem_queue = g_list_remove_link(c->elem_queue, elem);
 		c->elem_queue = g_list_concat(elem, c->elem_queue);
 		return elem->data;
@@ -94,7 +103,8 @@ void lru_cache_insert(struct lruCache *c, void* data,
 		void (*func)(void*, void*), void* user_data) {
 	void *victim = 0;
 	if (c->max_size > 0 && c->size == c->max_size) {
-		GList *last = g_list_last(c->elem_queue);
+		GList *last = c->elem_queue_tail;
+		c->elem_queue_tail = last->prev;
 		c->elem_queue = g_list_remove_link(c->elem_queue, last);
 		victim = last->data;
 		g_list_free_1(last);
@@ -102,6 +112,10 @@ void lru_cache_insert(struct lruCache *c, void* data,
 	}
 
 	c->elem_queue = g_list_prepend(c->elem_queue, data);
+	if (!c->elem_queue_tail) {
+		// 说明刚刚加进去的是唯一一个元素
+		c->elem_queue_tail = c->elem_queue;
+	}
 	c->size++;
 	if (victim) {
 		if (func)
