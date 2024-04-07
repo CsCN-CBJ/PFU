@@ -361,6 +361,10 @@ int index_update_buffer(struct segment *s){
     return 1;
 }
 
+/**
+ * index functions for do_upgrade
+*/
+
 static void upgrade_index_update1(GSequence *chunks, int64_t id) {
     VERBOSE("Filter phase: update1 upgrade index %d features", g_sequence_get_length(chunks));
     upgrade_index_value_t v;
@@ -442,7 +446,7 @@ void _upgrade_index_lookup(struct chunk *c){
         if(v) {
             upgrade_index_overhead.kvstore_hits++;
             VERBOSE("Pre Dedup phase: lookup kvstore for existing");
-            upgrade_fingerprint_cache_insert(&c->old_fp, v);
+            // upgrade_fingerprint_cache_insert(&c->old_fp, v);
             c->id = v->id;
             memcpy(&c->fp, &v->fp, sizeof(fingerprint));
             SET_CHUNK(c, CHUNK_DUPLICATE);
@@ -464,10 +468,22 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
     upgrade_index_overhead.index_lookup_requests++;
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        GHashTable* con = retrieve_upgrade_index_container_by_id(c->id);
-        if (con) {
-            upgrade_index_overhead.index_buffer_hits++;
-            upgrade_index_value_t* v = g_hash_table_lookup(con, &c->old_fp);
+        /* Searching in fingerprint cache */
+        upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        upgrade_index_overhead.cache_lookup_requests++;
+        if(v){
+            upgrade_index_overhead.cache_hits++;
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+            SET_CHUNK(c, CHUNK_DUPLICATE);
+        }
+    }
+
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        // 原本需要kvstore_lookup, 这里写了个永远为true的条件
+        if (c->id >= 0) {
+            upgrade_fingerprint_cache_prefetch(c->id);
+            upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
             assert(v);
             assert(v->id >= 0);
             c->id = v->id;

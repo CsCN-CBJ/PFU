@@ -555,6 +555,9 @@ static void* filter_thread_2D(void* arg) {
 			break;
 		}
 
+        TIMER_DECLARE(1);
+        TIMER_BEGIN(1);
+
 		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
 			assert(r == NULL);
 			r = new_file_recipe_meta(c->data); // filename
@@ -582,7 +585,6 @@ static void* filter_thread_2D(void* arg) {
 
     	    	jcr.chunk_num++;
 	    	    jcr.data_size += c->size;
-                free_chunk(c);
 			}
 			append_file_recipe_meta(bv, r);
 			free_file_recipe_meta(r);
@@ -590,6 +592,7 @@ static void* filter_thread_2D(void* arg) {
 
 			append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
 			jcr.file_num++;
+            g_sequence_free(file_chunks);
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
 			assert(!in_container);
 			assert(htb == NULL);
@@ -620,20 +623,12 @@ static void* filter_thread_2D(void* arg) {
 		} else {
 			// recipe chunks
             assert(!CHECK_CHUNK(c, CHUNK_DUPLICATE));
-
-            GHashTable* con = retrieve_upgrade_index_container_by_id(c->id);
-            assert(con);
-            upgrade_index_value_t *v = g_hash_table_lookup(con, &c->old_fp);
-            assert(v);
-
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-            SET_CHUNK(c, CHUNK_DUPLICATE);
-
-            assert(c->id>=0);
+            upgrade_index_lookup(c);
+            assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+            
 			g_sequence_append(file_chunks, c);
-
 		}
+        TIMER_END(1, jcr.filter_time);
 	}
     if (storage_buffer.container_buffer
     		&& !container_empty(storage_buffer.container_buffer)){

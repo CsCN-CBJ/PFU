@@ -349,9 +349,9 @@ void do_update(int revision, char *path) {
 			jcr.data_size * 1000000 / jcr.hash_time / 1024 / 1024);
 	printf("dedup_time : %.3fs, %.2fMB/s\n", jcr.dedup_time / 1000000,
 			jcr.data_size * 1000000 / jcr.dedup_time / 1024 / 1024);
-	printf("write_chunk_time : %.3fs, %.2fMB/s\n",
-			jcr.write_chunk_time / 1000000,
-			jcr.data_size * 1000000 / jcr.write_chunk_time / 1024 / 1024);
+	printf("filter_time : %.3fs, %.2fMB/s\n",
+			jcr.filter_time / 1000000,
+			jcr.data_size * 1000000 / jcr.filter_time / 1024 / 1024);
 
 	char logfile[] = "log/update.log";
 	FILE *fp = fopen(logfile, "a");

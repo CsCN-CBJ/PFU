@@ -102,32 +102,38 @@ void fingerprint_cache_prefetch(int64_t id){
 	}
 }
 
-void free_upgrade_index_value(upgrade_index_kv_t *kv) {
-	free(kv);
+/**
+ * Upgrade fingerprint cache
+ * LRU of GHashTable(old_fp, upgrade_index_value_t)
+*/
+
+void free_upgrade_index_value(GHashTable **htb) {
+	free(htb);
 }
 
-int compare_upgrade_index_value(upgrade_index_kv_t *kv, fingerprint *old_fp) {
-	return memcmp(&kv->old_fp, old_fp, sizeof(fingerprint)) == 0;
+int compare_upgrade_index_value(GHashTable **htb, fingerprint *old_fp) {
+	return g_hash_table_lookup(*htb, old_fp) != NULL;
 }
 
 void init_upgrade_fingerprint_cache() {
-	if (destor.upgrade_level != UPGRADE_NAIVE) {
-		destor.index_cache_size *= 888; // TODO: 修改这个数值
-	}
 	upgrade_lru_queue = new_lru_cache(destor.index_cache_size,
 				free_upgrade_index_value, compare_upgrade_index_value);
 }
 
-upgrade_index_kv_t* upgrade_fingerprint_cache_lookup(fingerprint *old_fp) {
-	return lru_cache_lookup(upgrade_lru_queue, old_fp);
+upgrade_index_value_t* upgrade_fingerprint_cache_lookup(fingerprint *old_fp) {
+	GHashTable **htb = lru_cache_lookup(upgrade_lru_queue, old_fp);
+	if (htb) {
+		upgrade_index_value_t* v = g_hash_table_lookup(*htb, old_fp);
+		assert(v);
+		return v;
+	}
+	return NULL;
 }
 
-void upgrade_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t *v) {
-	// 这里的指针被kvstore引用, 需要复制一份
-	upgrade_index_kv_t* new = malloc(sizeof(upgrade_index_kv_t));
-	memcpy(&new->old_fp, old_fp, sizeof(fingerprint));
-	memcpy(&new->value, v, sizeof(upgrade_index_value_t));
-	lru_cache_insert(upgrade_lru_queue, new, NULL, NULL);
+void upgrade_fingerprint_cache_insert(GHashTable *htb) {
+	GHashTable **htb_p = (GHashTable **) malloc(sizeof(GHashTable *));
+	*htb_p = htb;
+	lru_cache_insert(upgrade_lru_queue, htb_p, NULL, NULL);
 }
 
 void upgrade_fingerprint_cache_prefetch(int64_t id) {
@@ -137,10 +143,5 @@ void upgrade_fingerprint_cache_prefetch(int64_t id) {
 		WARNING("Error! The index container %lld has not been written!, %lld", id, c);
 		exit(1);
 	}
-	GHashTableIter iter;
-	gpointer key, value;
-	g_hash_table_iter_init(&iter, c);
-	while(g_hash_table_iter_next(&iter, &key, &value)){
-		upgrade_fingerprint_cache_insert(key, value);
-	}
+	upgrade_fingerprint_cache_insert(c);
 }
