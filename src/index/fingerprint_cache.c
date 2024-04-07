@@ -115,7 +115,12 @@ int compare_upgrade_index_value(GHashTable **htb, fingerprint *old_fp) {
 	return g_hash_table_lookup(*htb, old_fp) != NULL;
 }
 
+void init_upgrade_1D_fingerprint_cache();
 void init_upgrade_fingerprint_cache() {
+	if (destor.upgrade_level == UPGRADE_1D_RELATION) {
+		init_upgrade_1D_fingerprint_cache();
+		return;
+	}
 	upgrade_lru_queue = new_lru_cache(destor.index_cache_size,
 				free_upgrade_index_value, compare_upgrade_index_value);
 }
@@ -144,4 +149,46 @@ void upgrade_fingerprint_cache_prefetch(int64_t id) {
 		exit(1);
 	}
 	upgrade_fingerprint_cache_insert(c);
+}
+
+/**
+ * 1D
+ * LRU(upgrade_index_kv_t)
+ * +
+ * GHashTable(old_fp, upgrade_index_kv_t)
+ * 
+ * LRU free: do_nothing
+ * GHashTable free: free upgrade_index_kv_t
+*/
+GHashTable *upgrade_cache_htb;
+
+void init_upgrade_1D_fingerprint_cache() {
+	upgrade_lru_queue = new_lru_cache(destor.index_cache_size * 818,
+				free, NULL); // 不会查找，所以不需要比较函数
+	upgrade_cache_htb = g_hash_table_new_full(g_feature_hash, g_feature_equal, NULL, NULL);
+}
+
+upgrade_index_value_t* upgrade_1D_fingerprint_cache_lookup(fingerprint *old_fp) {
+	GList *elem =  g_hash_table_lookup(upgrade_cache_htb, old_fp);
+	if (!elem) {
+		return NULL;
+	}
+	upgrade_lru_queue->elem_queue = g_list_remove_link(upgrade_lru_queue->elem_queue, elem);
+	upgrade_lru_queue->elem_queue = g_list_concat(elem, upgrade_lru_queue->elem_queue);
+	upgrade_index_kv_t *kv = elem->data;
+	return &kv->value;
+}
+
+void upgrade_1D_remove(void *victim, void *user_data) {
+	upgrade_index_kv_t *kv = (upgrade_index_kv_t *)victim;
+	g_hash_table_remove(upgrade_cache_htb, &kv->old_fp);
+}
+
+void upgrade_1D_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t *v) {
+	upgrade_index_kv_t *kv = (upgrade_index_kv_t *)malloc(sizeof(upgrade_index_kv_t));
+	memcpy(&kv->old_fp, old_fp, sizeof(fingerprint));
+	memcpy(&kv->value, v, sizeof(upgrade_index_value_t));
+	lru_cache_insert(upgrade_lru_queue, kv, upgrade_1D_remove, NULL);
+	GList *elem = g_list_first(upgrade_lru_queue->elem_queue);
+	g_hash_table_insert(upgrade_cache_htb, &kv->old_fp, elem);
 }

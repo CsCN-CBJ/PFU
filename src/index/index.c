@@ -428,13 +428,13 @@ void _upgrade_index_lookup(struct chunk *c){
     /* Check the fingerprint cache */
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in fingerprint cache */
-        upgrade_index_kv_t* kv = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        upgrade_index_value_t* v = upgrade_1D_fingerprint_cache_lookup(&c->old_fp);
         upgrade_index_overhead.cache_lookup_requests++;
-        if(kv){
+        if(v){
             upgrade_index_overhead.cache_hits++;
             VERBOSE("Pre Dedup phase: existing fingerprint");
-            c->id = kv->value.id;
-            memcpy(&c->fp, &kv->value.fp, sizeof(fingerprint));
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
             SET_CHUNK(c, CHUNK_DUPLICATE);
         }
     }
@@ -445,8 +445,9 @@ void _upgrade_index_lookup(struct chunk *c){
         upgrade_index_overhead.kvstore_lookup_requests++;
         if(v) {
             upgrade_index_overhead.kvstore_hits++;
+            upgrade_index_overhead.read_prefetching_units++;
             VERBOSE("Pre Dedup phase: lookup kvstore for existing");
-            // upgrade_fingerprint_cache_insert(&c->old_fp, v);
+            upgrade_1D_fingerprint_cache_insert(&c->old_fp, v);
             c->id = v->id;
             memcpy(&c->fp, &v->fp, sizeof(fingerprint));
             SET_CHUNK(c, CHUNK_DUPLICATE);

@@ -80,7 +80,7 @@ void *dedup_thread(void *arg) {
 			continue;
 		/* segmenting success */
 		// UPDATE时不需要dedup(除了naive版本)
-		if (s->chunk_num > 0 && !(job == DESTOR_UPDATE && destor.upgrade_level != UPGRADE_NAIVE)) {
+		if (s->chunk_num > 0 && !(job == DESTOR_UPDATE && destor.upgrade_level == UPGRADE_2D_RELATION)) {
 			VERBOSE("Dedup phase: the %lldth segment of %lld chunks", segment_num++,
 					s->chunk_num);
 			/* Each duplicate chunk will be marked. */

@@ -26,4 +26,7 @@ void init_upgrade_fingerprint_cache();
 upgrade_index_value_t* upgrade_fingerprint_cache_lookup(fingerprint *old_fp);
 void upgrade_fingerprint_cache_insert(GHashTable *htb);
 void upgrade_fingerprint_cache_prefetch(int64_t id);
+
+upgrade_index_value_t* upgrade_1D_fingerprint_cache_lookup(fingerprint *old_fp);
+void upgrade_1D_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t *v);
 #endif /* FINGERPRINT_CACHE_H_ */

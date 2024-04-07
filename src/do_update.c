@@ -139,7 +139,9 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 			// send container
 			ck = new_chunk(0);
 			SET_CHUNK(ck, CHUNK_CONTAINER_START);
+			TIMER_END(1, jcr.read_chunk_time);
 			sync_queue_push(upgrade_chunk_queue, ck);
+			TIMER_BEGIN(1);
 
 			GHashTableIter iter;
 			gpointer key, value;
@@ -149,21 +151,25 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 				assert(ck);
 				memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
 				ck->id = TEMPORARY_ID;
+				TIMER_END(1, jcr.read_chunk_time);
 				sync_queue_push(upgrade_chunk_queue, ck);
+				TIMER_BEGIN(1);
 			}
 
 			ck = new_chunk(0);
 			ck->id = c->id;
 			SET_CHUNK(ck, CHUNK_CONTAINER_END);
+			TIMER_END(1, jcr.read_chunk_time);
 			sync_queue_push(upgrade_chunk_queue, ck);
+			TIMER_BEGIN(1);
 
 			free_container(con);
 			jcr.read_container_num++;
 			
 		}
+		TIMER_END(1, jcr.read_chunk_time);
 		sync_queue_push(upgrade_chunk_queue, c);
 
-		TIMER_END(1, jcr.read_chunk_time);
 	}
 
 	sync_queue_term(upgrade_chunk_queue);

@@ -649,7 +649,7 @@ void start_filter_phase() {
         if (destor.upgrade_level == UPGRADE_2D_RELATION) 
             pthread_create(&filter_t, NULL, filter_thread_2D, NULL);
         else if (destor.upgrade_level == UPGRADE_1D_RELATION)
-            pthread_create(&filter_t, NULL, filter_thread_simplified, NULL);
+            pthread_create(&filter_t, NULL, filter_thread, NULL);
         else
             pthread_create(&filter_t, NULL, filter_thread, NULL);
     } else {
