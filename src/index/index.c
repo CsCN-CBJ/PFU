@@ -5,6 +5,7 @@
 #include "../storage/containerstore.h"
 #include "../recipe/recipestore.h"
 #include "../jcr.h"
+#include "../storage/mysqlstore.h"
 
 struct index_overhead index_overhead;
 struct index_overhead upgrade_index_overhead;
@@ -366,18 +367,25 @@ int index_update_buffer(struct segment *s){
 */
 
 static void upgrade_index_update1(GSequence *chunks, int64_t id) {
-    VERBOSE("Filter phase: update1 upgrade index %d features", g_sequence_get_length(chunks));
-    upgrade_index_value_t v;
+    int length = g_sequence_get_length(chunks);
+    VERBOSE("Filter phase: update1 upgrade index %d features", length);
+    fingerprint *fps = (fingerprint*)malloc(sizeof(fingerprint) * length);
+    upgrade_index_value_t *v = (upgrade_index_value_t*)malloc(sizeof(upgrade_index_value_t) * length);
     GSequenceIter *iter = g_sequence_get_begin_iter(chunks);
     GSequenceIter *end = g_sequence_get_end_iter(chunks);
+    int i = 0;
     for (; iter != end; iter = g_sequence_iter_next(iter)) {
         struct chunk* c = g_sequence_get(iter);        
         upgrade_index_overhead.kvstore_update_requests++;
 
-        v.id = id;
-        memcpy(&v.fp, &c->fp, sizeof(fingerprint));
-        upgrade_kvstore_update((char*)&c->old_fp, &v);
+        memcpy(&fps[i], &c->old_fp, sizeof(fingerprint));
+        v[i].id = id;
+        memcpy(&v[i].fp, &c->fp, sizeof(fingerprint));
+        ++i;
+        // upgrade_kvstore_update((char*)&c->old_fp, &v);
     }
+    assert(i == length);
+    insert_sql_multi((char*)fps, sizeof(fingerprint), (char*)v, sizeof(upgrade_index_value_t), length);
 }
 
 static void upgrade_index_update2(GSequence *chunks, int64_t id) {
@@ -441,15 +449,20 @@ void _upgrade_index_lookup(struct chunk *c){
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in key-value store */
-        upgrade_index_value_t* v = upgrade_kvstore_lookup(&c->old_fp);
+        upgrade_index_value_t v;
+        unsigned long valueSize = 0;
+        int ret = fetch_sql((char*)&c->old_fp, sizeof(fingerprint), (char*)&v, sizeof(upgrade_index_value_t), &valueSize);
         upgrade_index_overhead.kvstore_lookup_requests++;
-        if(v) {
+        if(!ret) {
+            if (valueSize != sizeof(upgrade_index_value_t)) {
+                fprintf(stderr, "fetch_sql() failed %ld\n", valueSize);
+            }
             upgrade_index_overhead.kvstore_hits++;
             upgrade_index_overhead.read_prefetching_units++;
             VERBOSE("Pre Dedup phase: lookup kvstore for existing");
-            upgrade_1D_fingerprint_cache_insert(&c->old_fp, v);
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+            upgrade_1D_fingerprint_cache_insert(&c->old_fp, &v);
+            c->id = v.id;
+            memcpy(&c->fp, &v.fp, sizeof(fingerprint));
             SET_CHUNK(c, CHUNK_DUPLICATE);
         }
     }
