@@ -37,6 +37,22 @@
 #define TIMER_END(n,t) gettimeofday(&e##n, NULL); \
     (t)+=e##n.tv_usec-b##n.tv_usec+1000000*(e##n.tv_sec-b##n.tv_sec)
 
+#define PRINT_TIME_RECORD(tv) fprintf(f, "%ld.%06ld\n", (long)tv.tv_sec, (long)tv.tv_usec)
+#define TIMER_DIFF(e, b) (long long)(e.tv_sec-b.tv_sec) * 1000000 + (e.tv_usec-b.tv_usec)
+#define TIME_WAIT 100000 // 0.1s
+
+#define DECLARE_TIME_RECORDER(name) FILE *f = fopen("log/time/" name ".log", "w");\
+								struct timeval beginTime, endTime;\
+								memset(&endTime, 0, sizeof(struct timeval));
+
+#define BEGIN_TIME_RECORD gettimeofday(&beginTime, NULL);\
+			if (TIMER_DIFF(beginTime, endTime) > TIME_WAIT) {\
+				PRINT_TIME_RECORD(endTime);\
+				PRINT_TIME_RECORD(beginTime);\
+			}
+#define END_TIME_RECORD gettimeofday(&endTime, NULL);
+#define FINISH_TIME_RECORD PRINT_TIME_RECORD(endTime);fclose(f);
+
 #define DESTOR_CONFIGLINE_MAX 1024
 
 int job;

@@ -24,11 +24,14 @@ static void* read_recipe_thread(void *arg) {
 	int i, j, k;
 	fingerprint zero_fp;
 	memset(zero_fp, 0, sizeof(fingerprint));
+	DECLARE_TIME_RECORDER("read_recipe_thread");
 	for (i = 0; i < jcr.bv->number_of_files; i++) {
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
 
+		BEGIN_TIME_RECORD;
 		struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
+		END_TIME_RECORD;
 
 		struct chunk *c = new_chunk(sdslen(r->filename) + 1);
 		strcpy(c->data, r->filename);
@@ -42,7 +45,9 @@ static void* read_recipe_thread(void *arg) {
 			TIMER_DECLARE(1);
 			TIMER_BEGIN(1);
 
+			BEGIN_TIME_RECORD
 			struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, 1, &k);
+			END_TIME_RECORD
 
 			struct chunk* c = new_chunk(0);
 			memcpy(&c->old_fp, &cp->fp, sizeof(fingerprint));
@@ -63,6 +68,7 @@ static void* read_recipe_thread(void *arg) {
 		free_file_recipe_meta(r);
 	}
 
+	FINISH_TIME_RECORD
 	sync_queue_term(upgrade_recipe_queue);
 	return NULL;
 }
@@ -73,6 +79,7 @@ static void* lru_get_chunk_thread(void *arg) {
 	cache = new_lru_cache(destor.restore_cache[1], free_container,
 			lookup_fingerprint_in_container);
 
+	DECLARE_TIME_RECORDER("lru_get_chunk_thread");
 	struct chunk* c;
 	while ((c = sync_queue_pop(pre_dedup_queue))) {
 
@@ -87,7 +94,9 @@ static void* lru_get_chunk_thread(void *arg) {
 		// if (destor.simulation_level >= SIMULATION_RESTORE) {
 		struct container *con = lru_cache_lookup(cache, &c->old_fp);
 		if (!con) {
+			BEGIN_TIME_RECORD;
 			con = retrieve_container_by_id(c->id);
+			END_TIME_RECORD;
 			lru_cache_insert(cache, con, NULL, NULL);
 			jcr.read_container_num++;
 		}
@@ -104,6 +113,7 @@ static void* lru_get_chunk_thread(void *arg) {
 		// jcr.chunk_num++;
 		free_chunk(c);
 	}
+	FINISH_TIME_RECORD;
 
 	sync_queue_term(upgrade_chunk_queue);
 
@@ -116,6 +126,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 	// 已经发送的container id
 	GHashTable *htb = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 
+	DECLARE_TIME_RECORDER("lru_get_chunk_thread");
 	struct chunk *c, *ck; // c: get from queue, ck: temp chunk
 	while ((c = sync_queue_pop(upgrade_recipe_queue))) {
 
@@ -133,7 +144,9 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 			containerid *id = malloc(sizeof(containerid));
 			*id = c->id;
 			g_hash_table_insert(htb, id, "1");
+			BEGIN_TIME_RECORD;
 			struct container *con = retrieve_container_by_id(c->id);
+			END_TIME_RECORD
 			assert(con);
 
 			// send container
@@ -172,6 +185,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 
 	}
 
+	FINISH_TIME_RECORD
 	sync_queue_term(upgrade_chunk_queue);
 
 	g_hash_table_destroy(htb);
@@ -181,6 +195,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 
 
 static void* pre_dedup_thread(void *arg) {
+	DECLARE_TIME_RECORDER("pre_dedup_thread");
 	while (1) {
 		struct chunk* c = sync_queue_pop(upgrade_recipe_queue);
 
@@ -200,19 +215,23 @@ static void* pre_dedup_thread(void *arg) {
 			// while (upgrade_index_lookup(c) == 0) { // 目前永远是1, 所以不用管cond
 			// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
 			// }
+			BEGIN_TIME_RECORD
 			upgrade_index_lookup(c);
+			END_TIME_RECORD
 			pthread_mutex_unlock(&upgrade_index_lock.mutex);
 			
 		}
 
 		sync_queue_push(pre_dedup_queue, c);
 	}
+	FINISH_TIME_RECORD
 	sync_queue_term(pre_dedup_queue);
 
 	return NULL;
 }
 
 static void* sha256_thread(void* arg) {
+	DECLARE_TIME_RECORDER("sha256_thread");
 	// char code[41];
 	// 只有计算在container内的chunk的hash, 如果不是2D, 则始终为TRUE
 	int in_container = destor.upgrade_level == UPGRADE_2D_RELATION ? FALSE : TRUE;
@@ -235,6 +254,8 @@ static void* sha256_thread(void* arg) {
 			continue;
 		}
 
+		BEGIN_TIME_RECORD
+
 		assert(c->id == TEMPORARY_ID);
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
@@ -245,12 +266,15 @@ static void* sha256_thread(void* arg) {
 		SHA256_Final(c->fp, &ctx);
 		TIMER_END(1, jcr.hash_time);
 
+		END_TIME_RECORD
+
 		// hash2code(c->fp, code);
 		// code[40] = 0;
 		// VERBOSE("Update hash phase: %ldth chunk identified by %s", chunk_num++, code);
 
 		sync_queue_push(hash_queue, c);
 	}
+	FINISH_TIME_RECORD
 	return NULL;
 }
 
@@ -358,6 +382,9 @@ void do_update(int revision, char *path) {
 	printf("filter_time : %.3fs, %.2fMB/s\n",
 			jcr.filter_time / 1000000,
 			jcr.data_size * 1000000 / jcr.filter_time / 1024 / 1024);
+	printf("append_thread_time : %.3fs, %.2fMB/s\n",
+			jcr.write_time / 1000000,
+			jcr.data_size * 1000000 / jcr.write_time / 1024 / 1024);
 
 	char logfile[] = "log/update.log";
 	FILE *fp = fopen(logfile, "a");

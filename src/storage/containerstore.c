@@ -24,6 +24,7 @@ struct metaEntry {
  */
 static void* append_thread(void *arg) {
 
+	DECLARE_TIME_RECORDER("append_thread");
 	while (1) {
 		struct container *c = sync_queue_get_top(container_buffer);
 		if (c == NULL)
@@ -32,7 +33,9 @@ static void* append_thread(void *arg) {
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
 
+		BEGIN_TIME_RECORD
 		write_container(c);
+		END_TIME_RECORD
 
 		TIMER_END(1, jcr.write_time);
 
@@ -40,6 +43,7 @@ static void* append_thread(void *arg) {
 
 		free_container(c);
 	}
+	FINISH_TIME_RECORD
 
 	return NULL;
 }

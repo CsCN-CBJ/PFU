@@ -67,6 +67,9 @@ void send_segment(struct segment* s) {
 
 void *dedup_thread(void *arg) {
 	struct segment* s = NULL;
+
+	DECLARE_TIME_RECORDER("dedup_thread");
+
 	while (1) {
 		struct chunk *c = NULL;
 		if (destor.simulation_level != SIMULATION_ALL)
@@ -85,9 +88,15 @@ void *dedup_thread(void *arg) {
 					s->chunk_num);
 			/* Each duplicate chunk will be marked. */
 			pthread_mutex_lock(&index_lock.mutex);
+
+			BEGIN_TIME_RECORD;
+
 			while (index_lookup(s) == 0) {
 				pthread_cond_wait(&index_lock.cond, &index_lock.mutex);
 			}
+
+			END_TIME_RECORD;
+
 			pthread_mutex_unlock(&index_lock.mutex);
 		} else {
 			VERBOSE("Dedup phase: an empty segment");
@@ -103,6 +112,7 @@ void *dedup_thread(void *arg) {
 			break;
 	}
 
+	FINISH_TIME_RECORD;
 	sync_queue_term(dedup_queue);
 
 	return NULL;
