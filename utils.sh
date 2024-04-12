@@ -50,9 +50,10 @@ function compareRestore() {
     set +e  # 防止diff错误导致程序退出, 需要比较完所有的文件
     for ((i=0; i<RESTORE_ID; i++))
     do
-        diff -sqr ${SRC_DIR} ${DST_DIR}${i} | tee -a ${LOG_DIR}/compareRestore.txt
+        diff -sqr ${SRC_DIR} ${DST_DIR}${i} >> ${LOG_DIR}/compareRestore.txt
         [ $? -ne 0 ] && flag=1
     done
+    cat ${LOG_DIR}/compareRestore.txt
     set -e
 }
 
