@@ -386,6 +386,8 @@ static void upgrade_index_update1(GSequence *chunks, int64_t id) {
     }
     assert(i == length);
     insert_sql_multi((char*)fps, sizeof(fingerprint), (char*)v, sizeof(upgrade_index_value_t), length);
+    free(fps);
+    free(v);
 }
 
 static void upgrade_index_update2(GSequence *chunks, int64_t id) {
