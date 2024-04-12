@@ -7,6 +7,7 @@
 #include "../destor.h"
 #include "index.h"
 #include "../storage/containerstore.h"
+#include "../storage/mysqlstore.h"
 #include "../recipe/recipestore.h"
 #include "../utils/lru_cache.h"
 #include "fingerprint_cache.h"
@@ -141,12 +142,26 @@ void upgrade_fingerprint_cache_insert(GHashTable *htb) {
 	lru_cache_insert(upgrade_lru_queue, htb_p, NULL, NULL);
 }
 
-void upgrade_fingerprint_cache_prefetch(int64_t id) {
-	GHashTable* c = retrieve_upgrade_index_container_by_id(id);
+void upgrade_fingerprint_cache_prefetch(containerid id) {
+	int bufferSize = 1000 * sizeof(upgrade_index_kv_t);
+	upgrade_index_kv_t *kv = malloc(bufferSize); // sql insertion buffer
+	unsigned long valueSize;
+	int ret = fetch_sql(&id, sizeof(containerid), kv, bufferSize, &valueSize);
 	upgrade_index_overhead.read_prefetching_units++;
-	if (!c) {
-		WARNING("Error! The index container %lld has not been written!, %lld", id, c);
+	if (ret) {
+		WARNING("Error! The index container %lld has not been written!", id);
 		exit(1);
+	}
+	if (valueSize % sizeof(upgrade_index_kv_t) != 0) {
+		WARNING("Error! valueSize = %d", valueSize);
+		exit(1);
+	}
+	
+	GHashTable *c = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
+	for (int i = 0; i < valueSize / sizeof(upgrade_index_kv_t); i++) {
+		upgrade_index_kv_t *kv_i = malloc(sizeof(upgrade_index_kv_t));
+		memcpy(kv_i, kv + i, sizeof(upgrade_index_kv_t));
+		g_hash_table_insert(c, &kv_i->old_fp, &kv_i->value);
 	}
 	upgrade_fingerprint_cache_insert(c);
 }

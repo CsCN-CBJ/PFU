@@ -1,6 +1,7 @@
 #include "destor.h"
 #include "jcr.h"
 #include "storage/containerstore.h"
+#include "storage/mysqlstore.h"
 #include "recipe/recipestore.h"
 #include "rewrite_phase.h"
 #include "backup.h"
@@ -421,7 +422,6 @@ static void* filter_thread(void *arg) {
 static void* filter_thread_simplified(void *arg) {
     int enable_rewrite = 1;
     struct fileRecipeMeta* r = NULL;
-    GHashTable *htb = NULL;
     struct backupVersion* bv = jcr.new_bv;
     assert(destor.index_category[1] == INDEX_CATEGORY_PHYSICAL_LOCALITY);
     assert(job == DESTOR_UPDATE && destor.upgrade_level != UPGRADE_NAIVE);
@@ -550,7 +550,8 @@ static void* filter_thread_simplified(void *arg) {
 static void* filter_thread_2D(void* arg) {
     struct fileRecipeMeta* r = NULL;
 	struct backupVersion* bv = jcr.new_bv;
-	GHashTable *htb = NULL;
+    upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * 1000); // sql insertion buffer
+    int kv_num = 0;
 	GSequence *file_chunks = NULL;
 	int in_container = FALSE;
 
@@ -606,30 +607,27 @@ static void* filter_thread_2D(void* arg) {
             g_sequence_free(file_chunks);
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
 			assert(!in_container);
-			assert(htb == NULL);
 			in_container = TRUE;
-			htb = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
+			kv_num = 0;
             free_chunk(c);
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_END)) {
 			assert(in_container);
-			assert(htb);
 			in_container = FALSE;
             assert(c->id>=0);
-			write_upgrade_index_container(htb, c->id); // old container id
-			htb = NULL;
+            insert_sql((char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+            DEBUG("Insert id: %ld %d records %ldB into sql", c->id, kv_num, kv_num * sizeof(upgrade_index_kv_t));
             free_chunk(c);
 		} else if (in_container){
 			// container chunks
 			append_chunk_to_buffer(c);
 			assert(c->id >= 0);
 
-	        upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t));
-			memcpy(kv->old_fp, c->old_fp, sizeof(fingerprint));
-			memcpy(kv->value.fp, c->fp, sizeof(fingerprint));
-			kv->value.id = c->id;
-			assert(kv->value.id >= 0);
-			g_hash_table_insert(htb, &kv->old_fp, &kv->value);
-            assert(g_hash_table_lookup(htb, &kv->old_fp) == &kv->value);
+            upgrade_index_kv_t *kvp = &kv[kv_num];
+            memcpy(kvp->old_fp, c->old_fp, sizeof(fingerprint));
+            memcpy(kvp->value.fp, c->fp, sizeof(fingerprint));
+            kvp->value.id = c->id;
+            ++kv_num;
+
             free_chunk(c);
 		} else {
 			// recipe chunks
