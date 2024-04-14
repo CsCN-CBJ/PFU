@@ -143,7 +143,7 @@ void upgrade_fingerprint_cache_insert(GHashTable *htb) {
 }
 
 void upgrade_fingerprint_cache_prefetch(containerid id) {
-	int bufferSize = 1000 * sizeof(upgrade_index_kv_t);
+	int bufferSize = sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER;
 	upgrade_index_kv_t *kv = malloc(bufferSize); // sql insertion buffer
 	unsigned long valueSize;
 	int ret = fetch_sql(&id, sizeof(containerid), kv, bufferSize, &valueSize);
@@ -163,6 +163,7 @@ void upgrade_fingerprint_cache_prefetch(containerid id) {
 		memcpy(kv_i, kv + i, sizeof(upgrade_index_kv_t));
 		g_hash_table_insert(c, &kv_i->old_fp, &kv_i->value);
 	}
+	free(kv);
 	upgrade_fingerprint_cache_insert(c);
 }
 

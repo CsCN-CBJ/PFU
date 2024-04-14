@@ -14,6 +14,7 @@
 #define CONTAINER_META_SIZE (32768ll) //32KB
 #define CONTAINER_HEAD 16
 #define CONTAINER_META_ENTRY 28
+#define MAX_META_PER_CONTAINER (CONTAINER_META_SIZE / CONTAINER_META_ENTRY + 1)
 
 struct containerMeta {
 	containerid id;

@@ -550,7 +550,7 @@ static void* filter_thread_simplified(void *arg) {
 static void* filter_thread_2D(void* arg) {
     struct fileRecipeMeta* r = NULL;
 	struct backupVersion* bv = jcr.new_bv;
-    upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * 1000); // sql insertion buffer
+    upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER); // sql insertion buffer
     int kv_num = 0;
 	GSequence *file_chunks = NULL;
 	int in_container = FALSE;
