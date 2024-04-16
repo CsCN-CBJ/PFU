@@ -9,6 +9,7 @@
 
 struct index_overhead index_overhead;
 struct index_overhead upgrade_index_overhead;
+GHashTable *upgrade_processing;
 
 struct index_buffer index_buffer;
 
@@ -119,6 +120,7 @@ void init_index() {
 
     init_fingerprint_cache();
     init_upgrade_fingerprint_cache();
+    upgrade_processing = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 
     memset(&index_overhead, 0, sizeof(struct index_overhead));
     memset(&upgrade_index_overhead, 0, sizeof(struct index_overhead));
@@ -129,6 +131,8 @@ void init_index() {
 void close_index() {
     close_kvstore();
     close_upgrade_kvstore();
+    assert(g_hash_table_size(upgrade_processing) == 0);
+    g_hash_table_destroy(upgrade_processing);
 }
 
 extern struct{
@@ -205,6 +209,7 @@ static void index_lookup_base(struct segment *s){
                 }else{
                     NOTICE("Filter phase: A key collision occurs");
                 }
+                free(ids);
             }else{
                 index_overhead.lookup_requests_for_unique++;
                 VERBOSE("Dedup phase: non-existing fingerprint");
@@ -272,13 +277,7 @@ int index_lookup(struct segment* s) {
  */
 void index_update(GHashTable *features, int64_t id){
     VERBOSE("Filter phase: update %d features", g_hash_table_size(features));
-    GHashTableIter iter;
-    gpointer key, value;
-    g_hash_table_iter_init(&iter, features);
-    while (g_hash_table_iter_next(&iter, &key, &value)) {
-        index_overhead.kvstore_update_requests++;
-        kvstore_update(key, id);
-    }
+    kvstore_multi_update(features, id);
 }
 
 inline void index_delete(fingerprint *fp, int64_t id){
@@ -471,7 +470,7 @@ void _upgrade_index_lookup(struct chunk *c){
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         upgrade_index_overhead.lookup_requests_for_unique++;
-        VERBOSE("Dedup phase: non-existing fingerprint");
+        VERBOSE("_upgrade_index_lookup: non-existing fingerprint");
     }
 }
 
@@ -496,9 +495,7 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
     }
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        // 原本需要kvstore_lookup, 这里写了个永远为true的条件
-        if (c->id >= 0) {
-            upgrade_fingerprint_cache_prefetch(c->id);
+        if (upgrade_fingerprint_cache_prefetch(c->id)) {
             upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
             assert(v);
             assert(v->id >= 0);
@@ -510,7 +507,7 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         upgrade_index_overhead.lookup_requests_for_unique++;
-        VERBOSE("Dedup phase: non-existing fingerprint");
+        VERBOSE("_upgrade_index_lookup_c2c: non-existing fingerprint");
     }
 }
 

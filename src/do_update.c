@@ -9,6 +9,7 @@
 
 /* defined in index.c */
 extern struct index_overhead index_overhead, upgrade_index_overhead;
+extern GHashTable *upgrade_processing;
 
 struct {
 	/* g_mutex_init() is unnecessary if in static storage. */
@@ -123,14 +124,11 @@ static void* lru_get_chunk_thread(void *arg) {
 }
 
 static void* lru_get_chunk_thread_2D(void *arg) {
-	// 已经发送的container id
-	GHashTable *htb = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
-
 	DECLARE_TIME_RECORDER("lru_get_chunk_thread");
 	struct chunk *c, *ck; // c: get from queue, ck: temp chunk
-	while ((c = sync_queue_pop(upgrade_recipe_queue))) {
+	while ((c = sync_queue_pop(pre_dedup_queue))) {
 
-		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
+		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
 			sync_queue_push(upgrade_chunk_queue, c);
 			continue;
 		}
@@ -140,10 +138,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 
 		// 已经发送过的container不再发送
 		assert(c->id >= 0);
-		if (!g_hash_table_lookup(htb, &c->id)) {
-			containerid *id = malloc(sizeof(containerid));
-			*id = c->id;
-			g_hash_table_insert(htb, id, "1");
 			BEGIN_TIME_RECORD;
 			struct container *con = retrieve_container_by_id(c->id);
 			END_TIME_RECORD
@@ -179,7 +173,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 			free_container(con);
 			jcr.read_container_num++;
 			
-		}
 		TIMER_END(1, jcr.read_chunk_time);
 		sync_queue_push(upgrade_chunk_queue, c);
 
@@ -187,9 +180,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 
 	FINISH_TIME_RECORD
 	sync_queue_term(upgrade_chunk_queue);
-
-	g_hash_table_destroy(htb);
-
 	return NULL;
 }
 
@@ -216,7 +206,27 @@ static void* pre_dedup_thread(void *arg) {
 			// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
 			// }
 			BEGIN_TIME_RECORD
-			upgrade_index_lookup(c);
+			if (destor.upgrade_level == UPGRADE_2D_RELATION) {
+				if (g_hash_table_lookup(upgrade_processing, &c->id)) {
+					// container正在处理中, 标记为duplicate, c->id为TEMPORARY_ID
+					SET_CHUNK(c, CHUNK_DUPLICATE);
+					c->id = TEMPORARY_ID;
+					DEBUG("pre_dedup_thread: %ldth chunk is upgrade_processing", jcr.chunk_num++);
+				} else {
+					upgrade_index_lookup(c);
+					if(!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+						// 非重复块需要在下一阶段开始处理, 这个不能放到下面的阶段, 必须在同一锁内
+						int64_t *id = malloc(sizeof(int64_t));
+						*id = c->id;
+						g_hash_table_insert(upgrade_processing, id, "1");
+					}
+				}
+			} else if (destor.upgrade_level == UPGRADE_1D_RELATION) {
+				upgrade_index_lookup(c);
+			} else {
+				// Not Implemented
+				assert(0);
+			}
 			END_TIME_RECORD
 			pthread_mutex_unlock(&upgrade_index_lock.mutex);
 			
@@ -307,10 +317,10 @@ void do_update(int revision, char *path) {
     jcr.status = JCR_STATUS_RUNNING;
 	pthread_t recipe_t, read_t, pre_dedup_t, hash_t;
 	pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
+	pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 	if (destor.upgrade_level == UPGRADE_2D_RELATION) {
 		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
 	} else {
-    	pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 		pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
 	}
     pthread_create(&hash_t, NULL, sha256_thread, NULL);

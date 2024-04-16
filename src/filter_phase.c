@@ -10,6 +10,7 @@
 
 static pthread_t filter_t;
 static int64_t chunk_num;
+extern GHashTable *upgrade_processing;
 
 struct{
 	/* accessed in dedup phase */
@@ -614,7 +615,10 @@ static void* filter_thread_2D(void* arg) {
 			assert(in_container);
 			in_container = FALSE;
             assert(c->id>=0);
+            pthread_mutex_lock(&upgrade_index_lock.mutex);
             insert_sql((char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+            g_hash_table_remove(upgrade_processing, &c->id);
+            pthread_mutex_unlock(&upgrade_index_lock.mutex);
             DEBUG("Insert id: %ld %d records %ldB into sql", c->id, kv_num, kv_num * sizeof(upgrade_index_kv_t));
             free_chunk(c);
 		} else if (in_container){
@@ -631,9 +635,17 @@ static void* filter_thread_2D(void* arg) {
             free_chunk(c);
 		} else {
 			// recipe chunks
-            assert(!CHECK_CHUNK(c, CHUNK_DUPLICATE));
-            upgrade_index_lookup(c);
+            if (c->id == TEMPORARY_ID) {
+                UNSET_CHUNK(c, CHUNK_DUPLICATE);
+            }
+            if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+                // c->id == TEMPORARY_ID 代表这个chunk在pre_dedup时还在处理
+                pthread_mutex_lock(&upgrade_index_lock.mutex);
+                upgrade_index_lookup(c);
+                pthread_mutex_unlock(&upgrade_index_lock.mutex);
+            }
             assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+            assert(c->id >= 0);
             
 			g_sequence_append(file_chunks, c);
 		}
