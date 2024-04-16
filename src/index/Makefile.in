@@ -106,8 +106,8 @@ libindex_a_AR = $(AR) $(ARFLAGS)
 libindex_a_LIBADD =
 am_libindex_a_OBJECTS = index.$(OBJEXT) fingerprint_cache.$(OBJEXT) \
 	kvstore.$(OBJEXT) kvstore_htable.$(OBJEXT) \
-	sampling_method.$(OBJEXT) segmenting_method.$(OBJEXT) \
-	similarity_detection.$(OBJEXT)
+	kvstore_mysql.$(OBJEXT) sampling_method.$(OBJEXT) \
+	segmenting_method.$(OBJEXT) similarity_detection.$(OBJEXT)
 libindex_a_OBJECTS = $(am_libindex_a_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -255,7 +255,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 noinst_LIBRARIES = libindex.a
-libindex_a_SOURCES = index.c fingerprint_cache.c kvstore.c kvstore_htable.c sampling_method.c segmenting_method.c similarity_detection.c
+libindex_a_SOURCES = index.c fingerprint_cache.c kvstore.c kvstore_htable.c kvstore_mysql.c sampling_method.c segmenting_method.c similarity_detection.c
 all: all-am
 
 .SUFFIXES:
@@ -308,6 +308,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/index.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/kvstore.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/kvstore_htable.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/kvstore_mysql.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sampling_method.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/segmenting_method.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/similarity_detection.Po@am__quote@
