@@ -238,7 +238,7 @@ extern struct {
     // index buffer is full, waiting
     // if threshold < 0, it indicates no threshold.
     int wait_threshold;
-} index_lock, upgrade_index_lock;
+} index_lock;
 
 /*
  * return 1: indicates lookup is successful.

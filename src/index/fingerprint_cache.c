@@ -154,7 +154,7 @@ int upgrade_fingerprint_cache_prefetch(containerid id) {
 	if (ret) {
 		free(kv);
 		DEBUG("upgrade_fingerprint_cache_prefetch: The index container %lld has not been written!", id);
-		return;
+		return 0;
 	}
 	if (valueSize % sizeof(upgrade_index_kv_t) != 0) {
 		WARNING("Error! valueSize = %d", valueSize);
@@ -169,6 +169,7 @@ int upgrade_fingerprint_cache_prefetch(containerid id) {
 	}
 	free(kv);
 	upgrade_fingerprint_cache_insert(c);
+	return 1;
 }
 
 /**

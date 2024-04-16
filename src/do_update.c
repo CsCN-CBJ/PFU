@@ -11,14 +11,7 @@
 extern struct index_overhead index_overhead, upgrade_index_overhead;
 extern GHashTable *upgrade_processing;
 
-struct {
-	/* g_mutex_init() is unnecessary if in static storage. */
-	pthread_mutex_t mutex;
-	pthread_cond_t cond; // index buffer is not full
-	// index buffer is full, waiting
-	// if threshold < 0, it indicates no threshold.
-	int wait_threshold;
-} upgrade_index_lock;
+upgrade_lock_t upgrade_index_lock;
 
 static void* read_recipe_thread(void *arg) {
 

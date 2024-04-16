@@ -315,6 +315,10 @@ struct destor {
 
 } destor;
 
+typedef struct {
+	pthread_mutex_t mutex;
+} upgrade_lock_t;
+
 typedef unsigned char fingerprint[32];
 typedef int64_t containerid; //container id
 typedef int64_t segmentid;

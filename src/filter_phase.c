@@ -25,7 +25,9 @@ extern struct {
 	GMutex mutex;
 	GCond cond; // index buffer is not full
 	int wait_threshold;
-} index_lock, upgrade_index_lock;
+} index_lock;
+
+extern upgrade_lock_t upgrade_index_lock;
 
 static void flush_container() {
     if(destor.index_category[1] != INDEX_CATEGORY_PHYSICAL_LOCALITY) return;
