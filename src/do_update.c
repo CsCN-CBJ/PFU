@@ -138,6 +138,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 
 		// 已经发送过的container不再发送
 		assert(c->id >= 0);
+		DEBUG("lru_get_chunk_thread_2D %ld", c->id);
 			BEGIN_TIME_RECORD;
 			struct container *con = retrieve_container_by_id(c->id);
 			END_TIME_RECORD
@@ -209,9 +210,9 @@ static void* pre_dedup_thread(void *arg) {
 			if (destor.upgrade_level == UPGRADE_2D_RELATION) {
 				if (g_hash_table_lookup(upgrade_processing, &c->id)) {
 					// container正在处理中, 标记为duplicate, c->id为TEMPORARY_ID
+					DEBUG("container processing: %ld", c->id);
 					SET_CHUNK(c, CHUNK_DUPLICATE);
 					c->id = TEMPORARY_ID;
-					DEBUG("pre_dedup_thread: %ldth chunk is upgrade_processing", jcr.chunk_num++);
 				} else {
 					upgrade_index_lookup(c);
 					if(!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {

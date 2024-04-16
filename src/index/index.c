@@ -457,6 +457,7 @@ void _upgrade_index_lookup(struct chunk *c){
         if(!ret) {
             if (valueSize != sizeof(upgrade_index_value_t)) {
                 fprintf(stderr, "fetch_sql() failed %ld\n", valueSize);
+                exit(1);
             }
             upgrade_index_overhead.kvstore_hits++;
             upgrade_index_overhead.read_prefetching_units++;

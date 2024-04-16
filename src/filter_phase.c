@@ -551,6 +551,7 @@ static void* filter_thread_simplified(void *arg) {
 static void* filter_thread_2D(void* arg) {
     struct fileRecipeMeta* r = NULL;
 	struct backupVersion* bv = jcr.new_bv;
+    GHashTable *htb = NULL;
     upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER); // sql insertion buffer
     int kv_num = 0;
 	GSequence *file_chunks = NULL;
@@ -609,6 +610,8 @@ static void* filter_thread_2D(void* arg) {
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
 			assert(!in_container);
 			in_container = TRUE;
+            assert(htb == NULL);
+            htb = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
 			kv_num = 0;
             free_chunk(c);
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_END)) {
@@ -617,6 +620,8 @@ static void* filter_thread_2D(void* arg) {
             assert(c->id>=0);
             pthread_mutex_lock(&upgrade_index_lock.mutex);
             insert_sql((char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+            upgrade_fingerprint_cache_insert(htb);
+            htb = NULL;
             g_hash_table_remove(upgrade_processing, &c->id);
             pthread_mutex_unlock(&upgrade_index_lock.mutex);
             DEBUG("Insert id: %ld %d records %ldB into sql", c->id, kv_num, kv_num * sizeof(upgrade_index_kv_t));
@@ -626,10 +631,15 @@ static void* filter_thread_2D(void* arg) {
 			append_chunk_to_buffer(c);
 			assert(c->id >= 0);
 
-            upgrade_index_kv_t *kvp = &kv[kv_num];
+            upgrade_index_kv_t *kvp;
+
+            kvp = (upgrade_index_kv_t *)malloc(sizeof(upgrade_index_kv_t));
             memcpy(kvp->old_fp, c->old_fp, sizeof(fingerprint));
             memcpy(kvp->value.fp, c->fp, sizeof(fingerprint));
             kvp->value.id = c->id;
+            g_hash_table_insert(htb, &kvp->old_fp, &kvp->value);
+
+            memcpy(&kv[kv_num], kvp, sizeof(upgrade_index_kv_t));
             ++kv_num;
 
             free_chunk(c);
@@ -658,6 +668,7 @@ static void* filter_thread_2D(void* arg) {
     }
     /* All files done */
     FINISH_TIME_RECORD
+    free(kv);
     jcr.status = JCR_STATUS_DONE;
     return NULL;
 }
