@@ -311,6 +311,7 @@ int main(int argc, char **argv) {
 		case 'p': {
 			sds param = sdsnew(optarg);
 			load_config_from_string(param);
+			sdsfree(param);
 			break;
 		}
 		default:
