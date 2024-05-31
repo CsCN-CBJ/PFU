@@ -184,7 +184,6 @@ static void* pre_dedup_thread(void *arg) {
 		struct chunk* c = sync_queue_pop(upgrade_recipe_queue);
 
 		if (c == NULL) {
-			sync_queue_term(pre_dedup_queue);
 			break;
 		}
 

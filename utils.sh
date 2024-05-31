@@ -53,6 +53,7 @@ function compareRestore() {
         diff -sqr ${SRC_DIR} ${DST_DIR}${i} >> ${LOG_DIR}/compareRestore.txt
         [ $? -ne 0 ] && flag=1
     done
+    echo "" >> ${LOG_DIR}/compareRestore.txt
     cat ${LOG_DIR}/compareRestore.txt
     set -e
 }
