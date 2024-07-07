@@ -23,6 +23,7 @@ resetAll
 genBasicData
 
 # basic test
+# mkdir -p ~/destor/log/time
 mkdir -p ${DST_DIR}${RESTORE_ID}
 destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
 destor -r0 ${DST_DIR}${RESTORE_ID}

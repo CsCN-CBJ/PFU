@@ -368,6 +368,21 @@ int index_update_buffer(struct segment *s){
 static void upgrade_index_update1(GSequence *chunks, int64_t id) {
     int length = g_sequence_get_length(chunks);
     VERBOSE("Filter phase: update1 upgrade index %d features", length);
+    upgrade_index_value_t v;
+    GSequenceIter *iter = g_sequence_get_begin_iter(chunks);
+    GSequenceIter *end = g_sequence_get_end_iter(chunks);
+    for (; iter != end; iter = g_sequence_iter_next(iter)) {
+        struct chunk* c = g_sequence_get(iter);        
+        upgrade_index_overhead.kvstore_update_requests++;
+        v.id = id;
+        memcpy(&v.fp, &c->fp, sizeof(fingerprint));
+        insert_sql_store_buffered_1D(&c->old_fp, &v);
+    }
+}
+
+static void upgrade_index_update1_multi(GSequence *chunks, int64_t id) {
+    int length = g_sequence_get_length(chunks);
+    VERBOSE("Filter phase: update1 upgrade index %d features", length);
     fingerprint *fps = (fingerprint*)malloc(sizeof(fingerprint) * length);
     upgrade_index_value_t *v = (upgrade_index_value_t*)malloc(sizeof(upgrade_index_value_t) * length);
     GSequenceIter *iter = g_sequence_get_begin_iter(chunks);
@@ -451,14 +466,11 @@ void _upgrade_index_lookup(struct chunk *c){
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in key-value store */
         upgrade_index_value_t v;
-        unsigned long valueSize = 0;
-        int ret = fetch_sql((char*)&c->old_fp, sizeof(fingerprint), (char*)&v, sizeof(upgrade_index_value_t), &valueSize);
+        // unsigned long valueSize = 0;
+        // int ret = fetch_sql((char*)&c->old_fp, sizeof(fingerprint), (char*)&v, sizeof(upgrade_index_value_t), &valueSize);
+        int ret = fetch_sql_buffered_1D(&c->old_fp, &v);
         upgrade_index_overhead.kvstore_lookup_requests++;
         if(!ret) {
-            if (valueSize != sizeof(upgrade_index_value_t)) {
-                fprintf(stderr, "fetch_sql() failed %ld\n", valueSize);
-                exit(1);
-            }
             upgrade_index_overhead.kvstore_hits++;
             upgrade_index_overhead.read_prefetching_units++;
             VERBOSE("Pre Dedup phase: lookup kvstore for existing");
@@ -496,7 +508,9 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
     }
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        upgrade_index_overhead.kvstore_lookup_requests++;
         if (upgrade_fingerprint_cache_prefetch(c->id)) {
+            upgrade_index_overhead.kvstore_hits++;
             upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
             assert(v);
             assert(v->id >= 0);
@@ -508,6 +522,44 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         upgrade_index_overhead.lookup_requests_for_unique++;
+        VERBOSE("_upgrade_index_lookup_c2c: non-existing fingerprint");
+    }
+}
+
+void upgrade_index_lookup_2D_filter(struct chunk *c) {
+    // 2D index lookup in filter phase, to count separately
+    if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
+        return;
+
+    index_overhead.index_lookup_requests++;
+
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        /* Searching in fingerprint cache */
+        upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        index_overhead.cache_lookup_requests++;
+        if(v){
+            index_overhead.cache_hits++;
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+            SET_CHUNK(c, CHUNK_DUPLICATE);
+        }
+    }
+
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        index_overhead.kvstore_lookup_requests++;
+        if (upgrade_fingerprint_cache_prefetch(c->id)) {
+            index_overhead.kvstore_hits++;
+            upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+            assert(v);
+            assert(v->id >= 0);
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+            SET_CHUNK(c, CHUNK_DUPLICATE);
+        }
+    }
+
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        index_overhead.lookup_requests_for_unique++;
         VERBOSE("_upgrade_index_lookup_c2c: non-existing fingerprint");
     }
 }

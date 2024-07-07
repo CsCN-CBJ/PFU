@@ -653,7 +653,7 @@ static void* filter_thread_2D(void* arg) {
             if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
                 // c->id == TEMPORARY_ID 代表这个chunk在pre_dedup时还在处理
                 pthread_mutex_lock(&upgrade_index_lock.mutex);
-                upgrade_index_lookup(c);
+                upgrade_index_lookup_2D_filter(c);
                 pthread_mutex_unlock(&upgrade_index_lock.mutex);
             }
             assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));

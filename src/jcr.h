@@ -62,7 +62,13 @@ struct jcr{
 	double read_chunk_time;
 	double write_chunk_time;
 
-	int32_t read_container_num;
+	uint32_t sql_insert;
+	uint32_t sql_insert_all;
+	uint32_t sql_fetch;
+	uint32_t sql_fetch_buffered;
+
+	uint32_t read_container_num;
+	uint32_t sync_buffer_num;
 };
 
 extern struct jcr jcr;

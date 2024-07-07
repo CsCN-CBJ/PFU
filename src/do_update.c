@@ -205,6 +205,7 @@ static void* pre_dedup_thread(void *arg) {
 					DEBUG("container processing: %ld", c->id);
 					SET_CHUNK(c, CHUNK_DUPLICATE);
 					c->id = TEMPORARY_ID;
+					jcr.sync_buffer_num++;
 				} else {
 					upgrade_index_lookup(c);
 					if(!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
@@ -423,13 +424,13 @@ void do_update(int revision, char *path) {
 
 	fclose(fp);
 
-	fp = fopen("log/update_result.log", "a");
+	fp = stdout;
+	fprintf(fp, "%u %u %u %u\n", jcr.sql_insert_all, jcr.sql_insert, jcr.sql_fetch, jcr.sql_fetch_buffered);
+	fprintf(fp, "%u %u %u\n", jcr.read_container_num, jcr.hash_num, jcr.sync_buffer_num);
 	print_index_overhead(fp, &upgrade_index_overhead);
-	fprintf(fp, "===== ");
+	fprintf(fp, "\n");
 	print_index_overhead(fp, &index_overhead);
-	fprintf(fp, "===== ");
-	fprintf(fp, "%" PRIu32 " ", jcr.read_container_num);
-	fprintf(fp, "%" PRIu32 "\n", jcr.hash_num);
-	fclose(fp);
+	fprintf(fp, "\n");
+	// fclose(fp);
 
 }
