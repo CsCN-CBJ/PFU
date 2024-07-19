@@ -3,7 +3,7 @@
 #include "../utils/sync_queue.h"
 #include "../jcr.h"
 #include "../destor.h"
-#include "mysqlstore.h"
+#include "db.h"
 
 static int64_t container_count = 0;
 static FILE *old_fp, *new_fp;
@@ -89,7 +89,7 @@ void init_container_store() {
 	pthread_create(&append_t, NULL, append_thread, NULL);
 
 	init_upgrade_index_store();
-	init_sql();
+	initDB();
     NOTICE("Init container store successfully");
 }
 
@@ -114,7 +114,7 @@ void close_container_store() {
 	pthread_mutex_destroy(&new_mutex);
 
 	close_upgrade_index_store();
-	close_sql();
+	closeDB();
 }
 
 static void init_container_meta(struct containerMeta *meta) {

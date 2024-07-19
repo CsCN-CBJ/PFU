@@ -7,7 +7,7 @@
 #include "../destor.h"
 #include "index.h"
 #include "../storage/containerstore.h"
-#include "../storage/mysqlstore.h"
+#include "../storage/db.h"
 #include "../recipe/recipestore.h"
 #include "../utils/lru_cache.h"
 #include "fingerprint_cache.h"
@@ -147,9 +147,9 @@ void upgrade_fingerprint_cache_insert(GHashTable *htb) {
 */
 int upgrade_fingerprint_cache_prefetch(containerid id) {
 	int bufferSize = sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER;
-	upgrade_index_kv_t *kv = malloc(bufferSize); // sql insertion buffer
-	unsigned long valueSize;
-	int ret = fetch_sql(&id, sizeof(containerid), kv, bufferSize, &valueSize);
+	upgrade_index_kv_t *kv; // sql insertion buffer
+	int valueSize;
+	size_t ret = getDB(&id, sizeof(containerid), &kv, &valueSize);
 	upgrade_index_overhead.read_prefetching_units++;
 	if (ret) {
 		free(kv);

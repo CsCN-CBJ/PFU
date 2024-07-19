@@ -1,7 +1,7 @@
 #include "destor.h"
 #include "jcr.h"
 #include "storage/containerstore.h"
-#include "storage/mysqlstore.h"
+#include "storage/db.h"
 #include "recipe/recipestore.h"
 #include "rewrite_phase.h"
 #include "backup.h"
@@ -621,7 +621,7 @@ static void* filter_thread_2D(void* arg) {
 			in_container = FALSE;
             assert(c->id>=0);
             pthread_mutex_lock(&upgrade_index_lock.mutex);
-            insert_sql((char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+            setDB((char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
             upgrade_fingerprint_cache_insert(htb);
             htb = NULL;
             g_hash_table_remove(upgrade_processing, &c->id);

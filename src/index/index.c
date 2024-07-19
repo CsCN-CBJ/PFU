@@ -5,7 +5,7 @@
 #include "../storage/containerstore.h"
 #include "../recipe/recipestore.h"
 #include "../jcr.h"
-#include "../storage/mysqlstore.h"
+#include "../storage/db.h"
 
 struct index_overhead index_overhead;
 struct index_overhead upgrade_index_overhead;
@@ -130,7 +130,7 @@ void init_index() {
 
 void close_index() {
     close_kvstore();
-    close_upgrade_kvstore();
+    // close_upgrade_kvstore();
     assert(g_hash_table_size(upgrade_processing) == 0);
     g_hash_table_destroy(upgrade_processing);
 }
@@ -209,7 +209,7 @@ static void index_lookup_base(struct segment *s){
                 }else{
                     NOTICE("Filter phase: A key collision occurs");
                 }
-                free(ids);
+                // free(ids);
             }else{
                 index_overhead.lookup_requests_for_unique++;
                 VERBOSE("Dedup phase: non-existing fingerprint");
@@ -277,7 +277,13 @@ int index_lookup(struct segment* s) {
  */
 void index_update(GHashTable *features, int64_t id){
     VERBOSE("Filter phase: update %d features", g_hash_table_size(features));
-    kvstore_multi_update(features, id);
+    GHashTableIter iter;
+    gpointer key, value;
+    g_hash_table_iter_init(&iter, features);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        index_overhead.kvstore_update_requests++;
+        kvstore_update(key, id);
+    }
 }
 
 inline void index_delete(fingerprint *fp, int64_t id){
@@ -376,10 +382,11 @@ static void upgrade_index_update1(GSequence *chunks, int64_t id) {
         upgrade_index_overhead.kvstore_update_requests++;
         v.id = id;
         memcpy(&v.fp, &c->fp, sizeof(fingerprint));
-        insert_sql_store_buffered_1D(&c->old_fp, &v);
+        setDB(&c->old_fp, sizeof(fingerprint), &v, sizeof(upgrade_index_value_t));
     }
 }
 
+/*
 static void upgrade_index_update1_multi(GSequence *chunks, int64_t id) {
     int length = g_sequence_get_length(chunks);
     VERBOSE("Filter phase: update1 upgrade index %d features", length);
@@ -403,7 +410,9 @@ static void upgrade_index_update1_multi(GSequence *chunks, int64_t id) {
     free(fps);
     free(v);
 }
+*/
 
+/*
 static void upgrade_index_update2(GSequence *chunks, int64_t id) {
     VERBOSE("Filter phase: update2 upgrade index %d features", g_sequence_get_length(chunks));
     upgrade_index_kv_t *kv;
@@ -425,13 +434,15 @@ static void upgrade_index_update2(GSequence *chunks, int64_t id) {
     // 暂时使用containerid, 可能需要改成单独的id
     write_upgrade_index_container(con, id);
 }
+*/
 
 void upgrade_index_update(GSequence *chunks, int64_t id) {
     assert(destor.upgrade_level == UPGRADE_1D_RELATION);
     if (destor.upgrade_level == UPGRADE_1D_RELATION) {
         upgrade_index_update1(chunks, id);
     } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
-        upgrade_index_update2(chunks, id);
+        assert(0);
+        // upgrade_index_update2(chunks, id);
     }
 }
 
@@ -465,18 +476,18 @@ void _upgrade_index_lookup(struct chunk *c){
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in key-value store */
-        upgrade_index_value_t v;
-        // unsigned long valueSize = 0;
-        // int ret = fetch_sql((char*)&c->old_fp, sizeof(fingerprint), (char*)&v, sizeof(upgrade_index_value_t), &valueSize);
-        int ret = fetch_sql_buffered_1D(&c->old_fp, &v);
+        upgrade_index_value_t *v;
+        int valueSize;
+        int ret = getDB(&c->old_fp, sizeof(fingerprint), &v, &valueSize);
         upgrade_index_overhead.kvstore_lookup_requests++;
         if(!ret) {
+            assert(valueSize == sizeof(upgrade_index_value_t));
             upgrade_index_overhead.kvstore_hits++;
             upgrade_index_overhead.read_prefetching_units++;
             VERBOSE("Pre Dedup phase: lookup kvstore for existing");
-            upgrade_1D_fingerprint_cache_insert(&c->old_fp, &v);
-            c->id = v.id;
-            memcpy(&c->fp, &v.fp, sizeof(fingerprint));
+            upgrade_1D_fingerprint_cache_insert(&c->old_fp, v);
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
             SET_CHUNK(c, CHUNK_DUPLICATE);
         }
     }

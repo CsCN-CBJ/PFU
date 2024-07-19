@@ -25,8 +25,8 @@ genBasicData
 # basic test
 # mkdir -p ~/destor/log/time
 mkdir -p ${DST_DIR}${RESTORE_ID}
-destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
-destor -r0 ${DST_DIR}${RESTORE_ID}
+./destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
+./destor -r0 ${DST_DIR}${RESTORE_ID}
 let ++RESTORE_ID
 
 # update test
@@ -45,9 +45,9 @@ elif [ $1 -eq 2 ]; then
   "
 fi
 mkdir -p ${DST_DIR}${RESTORE_ID}
-destor -u0 ${SRC_DIR} -i$1 "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
+./destor -u0 ${SRC_DIR} -i$1 "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
 rm ${WORKING_DIR}/container.pool
-destor -n1 ${DST_DIR}${RESTORE_ID}
+./destor -n1 ${DST_DIR}${RESTORE_ID}
 let ++RESTORE_ID
 
 compareRestore
