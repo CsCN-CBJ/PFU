@@ -30,7 +30,8 @@
 #include <glib.h>
 #include <getopt.h>
 
-#include "utils/sds.h"
+// #include "utils/sds.h"
+#include <hiredis/hiredis.h>
 
 #define TIMER_DECLARE(n) struct timeval b##n,e##n
 #define TIMER_BEGIN(n) gettimeofday(&b##n, NULL)
