@@ -8,7 +8,6 @@ static redisContext *conn;
 static pthread_mutex_t dbLock;
 
 void init_ror() {
-    fprintf(stderr, "start1\n");
     struct timeval timeout = { 5, 0 };
     conn = redisConnectWithTimeout(REDIS_ADDR, REDIS_PORT, timeout);
     pthread_mutex_init(&dbLock, NULL);
@@ -21,10 +20,8 @@ void init_ror() {
         }
         exit(1);
     }
-    fprintf(stderr, "start2\n");
     // 发送FLUSHALL命令清空Redis
     redisReply *reply = (redisReply*)redisCommand(conn, "FLUSHALL");
-    fprintf(stderr, "start3\n");
     if (reply == NULL) {
         printf("FLUSHALL command failed: %s\n", conn->errstr);
     } else if (reply->type == REDIS_REPLY_ERROR) {
@@ -32,7 +29,6 @@ void init_ror() {
     } else {
         printf("Redis has been flushed successfully.\n");
     }
-    fprintf(stderr, "start\n");
     freeReplyObject(reply);
 }
 

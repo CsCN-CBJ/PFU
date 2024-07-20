@@ -477,7 +477,7 @@ void _upgrade_index_lookup(struct chunk *c){
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in key-value store */
         upgrade_index_value_t *v;
-        int valueSize;
+        size_t valueSize;
         int ret = getDB(&c->old_fp, sizeof(fingerprint), &v, &valueSize);
         upgrade_index_overhead.kvstore_lookup_requests++;
         if(!ret) {
@@ -489,6 +489,7 @@ void _upgrade_index_lookup(struct chunk *c){
             c->id = v->id;
             memcpy(&c->fp, &v->fp, sizeof(fingerprint));
             SET_CHUNK(c, CHUNK_DUPLICATE);
+            free(v);
         }
     }
 
