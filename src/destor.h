@@ -133,6 +133,7 @@ int job;
  */
 #define INDEX_KEY_VALUE_HTABLE 0
 #define INDEX_KEY_VALUE_MYSQL 1
+#define INDEX_KEY_VALUE_ROR 2
 /*
  * Feature is used for prefetching segments (similarity) or containers (locality).
  * For example, when we find a duplicate chunk,

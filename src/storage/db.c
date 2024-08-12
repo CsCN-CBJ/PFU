@@ -4,63 +4,66 @@
 #define REDIS_ADDR "127.0.0.1"
 #define REDIS_PORT 6666
 
-static redisContext *conn;
-static pthread_mutex_t dbLock;
+static redisContext *connList[DB_ALL];
+static pthread_mutex_t dbLock[DB_ALL];
 
-void init_ror() {
+void init_ror(int index) {
     struct timeval timeout = { 5, 0 };
-    conn = redisConnectWithTimeout(REDIS_ADDR, REDIS_PORT, timeout);
-    pthread_mutex_init(&dbLock, NULL);
+    connList[index] = redisConnectWithTimeout(REDIS_ADDR, REDIS_PORT, timeout);
+    redisContext *conn = connList[index];
     if (conn == NULL || conn->err) {
         if (conn) {
-            printf("Connection error: %s\n", conn->errstr);
+            fprintf(stderr, "Connection error: %d %s\n", conn->err, conn->errstr);
             redisFree(conn);
         } else {
-            printf("Connection error: can't allocate redis context\n");
+            fprintf(stderr, "Connection error: can't allocate redis context\n");
         }
         exit(1);
     }
-    // 发送FLUSHALL命令清空Redis
-    redisReply *reply = (redisReply*)redisCommand(conn, "FLUSHALL");
+    redisReply *reply = redisCommand(conn, "SELECT %d", index);
     if (reply == NULL) {
-        printf("FLUSHALL command failed: %s\n", conn->errstr);
+        printf("redisCommand failed: %s\n", conn->errstr);
+        exit(1);
     } else if (reply->type == REDIS_REPLY_ERROR) {
-        printf("FLUSHALL command returned error: %s\n", reply->str);
-    } else {
-        printf("Redis has been flushed successfully.\n");
+        printf("redisCommand returned error: %s\n", conn->errstr);
+        exit(1);
     }
     freeReplyObject(reply);
 }
 
-void initDB() {
-    init_ror();
+void initDB(int index) {
+    pthread_mutex_init(&dbLock[index], NULL);
+    init_ror(index);
 }
 
-void close_ror() {
-    redisFree(conn);
-    pthread_mutex_destroy(&dbLock);
+void close_ror(int index) {
+    redisFree(connList[index]);
 }
 
-void closeDB() {
-    close_ror();
+void closeDB(int index) {
+    close_ror(index);
+    pthread_mutex_destroy(&dbLock[index]);
 }
 
-void setDB(char *key, size_t keySize, char *value, size_t valueSize) {
-    pthread_mutex_lock(&dbLock);
+void setDB(int index, char *key, size_t keySize, char *value, size_t valueSize) {
+    pthread_mutex_lock(&dbLock[index]);
     jcr.sql_insert++;
-    redisReply *reply = (redisReply*)redisCommand(conn, "SET %b %b", key, keySize, value, valueSize);
+    redisReply *reply = redisCommand(connList[index], "SET %b %b", key, keySize, value, valueSize);
     freeReplyObject(reply);
-    pthread_mutex_unlock(&dbLock);
+    pthread_mutex_unlock(&dbLock[index]);
 }
 
-int getDB(char *key, size_t keySize, char **value, size_t *valueSize) {
+int getDB(int index, char *key, size_t keySize, char **value, size_t *valueSize) {
     int res;
-    pthread_mutex_lock(&dbLock);
+    pthread_mutex_lock(&dbLock[index]);
     jcr.sql_fetch++;
-    redisReply *reply = (redisReply*)redisCommand(conn, "GET %b", key, keySize);
+    redisReply *reply = redisCommand(connList[index], "GET %b", key, keySize);
     *value = NULL;
     *valueSize = 0;
-    if (reply->type == REDIS_REPLY_NIL) {
+    if (reply->type == REDIS_REPLY_ERROR) {
+        printf("redisCommand returned error: %s\n", connList[index]->errstr);
+        exit(1);
+    } else if (reply->type == REDIS_REPLY_NIL) {
         res = -1;
     } else {
         char *valueCopy = malloc(reply->len);
@@ -70,8 +73,6 @@ int getDB(char *key, size_t keySize, char **value, size_t *valueSize) {
         res = 0;
     }
     freeReplyObject(reply);
-    pthread_mutex_unlock(&dbLock);
+    pthread_mutex_unlock(&dbLock[index]);
     return res;
 }
-
-

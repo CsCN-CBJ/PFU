@@ -161,6 +161,8 @@ void load_config_from_string(sds config) {
 				&& argc == 2) {
 			if (strcasecmp(argv[1], "htable") == 0) {
 				destor.index_key_value_store = INDEX_KEY_VALUE_HTABLE;
+			} else if (strcasecmp(argv[1], "ror") == 0) {
+				destor.index_key_value_store = INDEX_KEY_VALUE_ROR;
 			} else {
 				err = "Invalid key-value store";
 				goto loaderr;

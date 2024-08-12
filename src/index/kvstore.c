@@ -18,6 +18,12 @@ extern void close_upgrade_kvstore_htable();
 extern void* upgrade_kvstore_htable_lookup(char* key);
 extern void upgrade_kvstore_htable_update(char* key, void* value);
 
+extern void init_kvstore_ror();
+extern void close_kvstore_ror();
+extern int64_t* kvstore_ror_lookup(char* key);
+extern void kvstore_ror_update(char* key, int64_t id);
+extern void kvstore_ror_delete(char* key, int64_t id);
+
 /*
  * Mapping a fingerprint (or feature) to the prefetching unit.
  */
@@ -54,6 +60,19 @@ void init_kvstore() {
 			// upgrade_kvstore_lookup = upgrade_kvstore_htable_lookup;
 			// upgrade_kvstore_update = upgrade_kvstore_htable_update;
 
+    		break;
+		// case INDEX_KEY_VALUE_MYSQL:
+		// 	init_kvstore_mysql();
+		// 	close_kvstore = close_kvstore_mysql;
+		// 	kvstore_lookup = kvstore_mysql_lookup;
+		// 	kvstore_update = kvstore_mysql_update;
+		// 	kvstore_delete = kvstore_mysql_delete;
+		case INDEX_KEY_VALUE_ROR:
+			init_kvstore_ror();
+			close_kvstore = close_kvstore_ror;
+			kvstore_lookup = kvstore_ror_lookup;
+			kvstore_update = kvstore_ror_update;
+			kvstore_delete = kvstore_ror_delete;
     		break;
     	default:
     		WARNING("Invalid key-value store!");

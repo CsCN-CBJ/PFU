@@ -209,7 +209,7 @@ static void index_lookup_base(struct segment *s){
                 }else{
                     NOTICE("Filter phase: A key collision occurs");
                 }
-                // free(ids);
+                free(ids);
             }else{
                 index_overhead.lookup_requests_for_unique++;
                 VERBOSE("Dedup phase: non-existing fingerprint");
@@ -382,7 +382,7 @@ static void upgrade_index_update1(GSequence *chunks, int64_t id) {
         upgrade_index_overhead.kvstore_update_requests++;
         v.id = id;
         memcpy(&v.fp, &c->fp, sizeof(fingerprint));
-        setDB(&c->old_fp, sizeof(fingerprint), &v, sizeof(upgrade_index_value_t));
+        setDB(DB_UPGRADE, &c->old_fp, sizeof(fingerprint), &v, sizeof(upgrade_index_value_t));
     }
 }
 
@@ -478,7 +478,7 @@ void _upgrade_index_lookup(struct chunk *c){
         /* Searching in key-value store */
         upgrade_index_value_t *v;
         size_t valueSize;
-        int ret = getDB(&c->old_fp, sizeof(fingerprint), &v, &valueSize);
+        int ret = getDB(DB_UPGRADE, &c->old_fp, sizeof(fingerprint), &v, &valueSize);
         upgrade_index_overhead.kvstore_lookup_requests++;
         if(!ret) {
             assert(valueSize == sizeof(upgrade_index_value_t));

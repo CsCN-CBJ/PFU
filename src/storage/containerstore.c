@@ -89,7 +89,7 @@ void init_container_store() {
 	pthread_create(&append_t, NULL, append_thread, NULL);
 
 	init_upgrade_index_store();
-	initDB();
+	initDB(DB_UPGRADE);
     NOTICE("Init container store successfully");
 }
 
@@ -114,7 +114,7 @@ void close_container_store() {
 	pthread_mutex_destroy(&new_mutex);
 
 	close_upgrade_index_store();
-	closeDB();
+	closeDB(DB_UPGRADE);
 }
 
 static void init_container_meta(struct containerMeta *meta) {

@@ -21,7 +21,6 @@ function testInit() {
 function remake() {
     make clean -s
     make -s
-    make install -s
 }
 
 function resetAll() {

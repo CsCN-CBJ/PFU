@@ -147,15 +147,15 @@ void upgrade_fingerprint_cache_insert(GHashTable *htb) {
 */
 int upgrade_fingerprint_cache_prefetch(containerid id) {
 	int bufferSize = sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER;
-	upgrade_index_kv_t **kv; // sql insertion buffer
+	upgrade_index_kv_t *kv; // sql insertion buffer
 	size_t valueSize;
-	int ret = getDB(&id, sizeof(containerid), &kv, &valueSize);
+	int ret = getDB(DB_UPGRADE, &id, sizeof(containerid), &kv, &valueSize);
 	upgrade_index_overhead.read_prefetching_units++;
 	if (ret) {
 		DEBUG("upgrade_fingerprint_cache_prefetch: The index container %lld has not been written!", id);
 		return 0;
 	}
-	if (valueSize % sizeof(upgrade_index_kv_t) != 0) {
+	if (valueSize % sizeof(upgrade_index_kv_t) != 0 || valueSize == 0) {
 		WARNING("Error! valueSize = %d", valueSize);
 		exit(1);
 	}
