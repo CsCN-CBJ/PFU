@@ -132,40 +132,40 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		// 已经发送过的container不再发送
 		assert(c->id >= 0);
 		DEBUG("lru_get_chunk_thread_2D %ld", c->id);
-			BEGIN_TIME_RECORD;
-			struct container *con = retrieve_container_by_id(c->id);
-			END_TIME_RECORD
-			assert(con);
+		BEGIN_TIME_RECORD;
+		struct container *con = retrieve_container_by_id(c->id);
+		END_TIME_RECORD
+		assert(con);
 
-			// send container
-			ck = new_chunk(0);
-			SET_CHUNK(ck, CHUNK_CONTAINER_START);
+		// send container
+		ck = new_chunk(0);
+		SET_CHUNK(ck, CHUNK_CONTAINER_START);
+		TIMER_END(1, jcr.read_chunk_time);
+		sync_queue_push(upgrade_chunk_queue, ck);
+		TIMER_BEGIN(1);
+
+		GHashTableIter iter;
+		gpointer key, value;
+		g_hash_table_iter_init(&iter, con->meta.map);
+		while(g_hash_table_iter_next(&iter, &key, &value)){
+			ck = get_chunk_in_container(con, key);
+			assert(ck);
+			memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
+			ck->id = TEMPORARY_ID;
 			TIMER_END(1, jcr.read_chunk_time);
 			sync_queue_push(upgrade_chunk_queue, ck);
 			TIMER_BEGIN(1);
+		}
 
-			GHashTableIter iter;
-			gpointer key, value;
-			g_hash_table_iter_init(&iter, con->meta.map);
-			while(g_hash_table_iter_next(&iter, &key, &value)){
-				ck = get_chunk_in_container(con, key);
-				assert(ck);
-				memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
-				ck->id = TEMPORARY_ID;
-				TIMER_END(1, jcr.read_chunk_time);
-				sync_queue_push(upgrade_chunk_queue, ck);
-				TIMER_BEGIN(1);
-			}
+		ck = new_chunk(0);
+		ck->id = c->id;
+		SET_CHUNK(ck, CHUNK_CONTAINER_END);
+		TIMER_END(1, jcr.read_chunk_time);
+		sync_queue_push(upgrade_chunk_queue, ck);
+		TIMER_BEGIN(1);
 
-			ck = new_chunk(0);
-			ck->id = c->id;
-			SET_CHUNK(ck, CHUNK_CONTAINER_END);
-			TIMER_END(1, jcr.read_chunk_time);
-			sync_queue_push(upgrade_chunk_queue, ck);
-			TIMER_BEGIN(1);
-
-			free_container(con);
-			jcr.read_container_num++;
+		free_container(con);
+		jcr.read_container_num++;
 			
 		TIMER_END(1, jcr.read_chunk_time);
 		sync_queue_push(upgrade_chunk_queue, c);
