@@ -5,6 +5,7 @@
 testInit /data/cbj/destor
 CONFIG=-p"working-directory $WORKING_DIR"
 SRC_DIR=/data/cbj/temp
+# SRC_DIR=/data/datasets/rdb
 
 cd ~/destor
 remake
@@ -19,6 +20,7 @@ if [[ $bkp == 1 ]]; then
     resetAll
         
     redis-cli -p 6666 FLUSHALL
+    redis-cli -p 6667 FLUSHALL
 
     set -x
     # basic test
@@ -39,6 +41,7 @@ let ++RESTORE_ID
 function update() {
     # update test
     redis-cli -p 6666 FLUSHALL
+    redis-cli -p 6667 FLUSHALL
     rm -r ${WORKING_DIR}
     cp -r ${WORKING_DIR}_bak ${WORKING_DIR}
     
@@ -55,8 +58,8 @@ function update() {
     let ++RESTORE_ID
 }
 
-update 0
-update 1
+# update 0
+# update 1
 update 2
 
 if [ $chk -eq 1 ]; then

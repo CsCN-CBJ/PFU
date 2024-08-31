@@ -9,26 +9,26 @@ static pthread_mutex_t dbLock[DB_ALL];
 
 void init_ror(int index) {
     struct timeval timeout = { 5, 0 };
-    connList[index] = redisConnectWithTimeout(REDIS_ADDR, REDIS_PORT, timeout);
+    connList[index] = redisConnectWithTimeout(REDIS_ADDR, REDIS_PORT + index, timeout);
     redisContext *conn = connList[index];
     if (conn == NULL || conn->err) {
         if (conn) {
             fprintf(stderr, "Connection error: %d %s\n", conn->err, conn->errstr);
             redisFree(conn);
         } else {
-            fprintf(stderr, "Connection error: can't allocate redis context\n");
+            perror("Connection error: can't allocate redis context\n");
         }
         exit(1);
     }
-    redisReply *reply = redisCommand(conn, "SELECT %d", index);
-    if (reply == NULL) {
-        printf("redisCommand failed: %s\n", conn->errstr);
-        exit(1);
-    } else if (reply->type == REDIS_REPLY_ERROR) {
-        printf("redisCommand returned error: %s\n", conn->errstr);
-        exit(1);
-    }
-    freeReplyObject(reply);
+    // redisReply *reply = redisCommand(conn, "SELECT %d", index);
+    // if (reply == NULL) {
+    //     printf("redisCommand failed: %s\n", conn->errstr);
+    //     exit(1);
+    // } else if (reply->type == REDIS_REPLY_ERROR) {
+    //     printf("redisCommand returned error: %s\n", conn->errstr);
+    //     exit(1);
+    // }
+    // freeReplyObject(reply);
 }
 
 void initDB(int index) {
@@ -61,8 +61,8 @@ int getDB(int index, char *key, size_t keySize, char **value, size_t *valueSize)
     *value = NULL;
     *valueSize = 0;
     if (reply->type == REDIS_REPLY_ERROR) {
-        printf("redisCommand returned error: %s\n", connList[index]->errstr);
-        exit(1);
+        fprintf(stderr, "redisCommand returned error: %s %d\n", connList[index]->errstr, connList[index]->err);
+        exit(6);
     } else if (reply->type == REDIS_REPLY_NIL) {
         res = -1;
     } else {
