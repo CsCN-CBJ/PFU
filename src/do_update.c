@@ -199,7 +199,7 @@ static void* pre_dedup_thread(void *arg) {
 			// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
 			// }
 			BEGIN_TIME_RECORD
-			if (destor.upgrade_level == UPGRADE_2D_RELATION) {
+			if (destor.upgrade_level == UPGRADE_2D_RELATION || destor.upgrade_level == UPGRADE_SIMILARITY) {
 				if (g_hash_table_lookup(upgrade_processing, &c->id)) {
 					// container正在处理中, 标记为duplicate, c->id为TEMPORARY_ID
 					DEBUG("container processing: %ld", c->id);
@@ -312,14 +312,14 @@ void do_update(int revision, char *path) {
 	pthread_t recipe_t, read_t, pre_dedup_t, hash_t;
 	pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
 	pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
-	if (destor.upgrade_level == UPGRADE_2D_RELATION) {
+	if (destor.upgrade_level == UPGRADE_2D_RELATION || destor.upgrade_level == UPGRADE_SIMILARITY) {
 		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
 	} else {
 		pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
 	}
     pthread_create(&hash_t, NULL, sha256_thread, NULL);
 
-	if (destor.upgrade_level != UPGRADE_2D_RELATION) {
+	if (destor.upgrade_level == UPGRADE_NAIVE || destor.upgrade_level == UPGRADE_1D_RELATION) {
 		start_dedup_phase();
 		start_rewrite_phase();
 	}
@@ -347,7 +347,7 @@ void do_update(int revision, char *path) {
 	pthread_join(pre_dedup_t, NULL);
 	pthread_join(read_t, NULL);
 	pthread_join(hash_t, NULL);
-	if (destor.upgrade_level != UPGRADE_2D_RELATION) {
+	if (destor.upgrade_level == UPGRADE_NAIVE || destor.upgrade_level == UPGRADE_1D_RELATION) {
 		stop_dedup_phase();
 		stop_rewrite_phase();
 	}
