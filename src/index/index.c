@@ -538,6 +538,31 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
     }
 }
 
+void _upgrade_index_lookup_constrained(struct chunk *c) {
+    
+    if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
+        return;
+
+    upgrade_index_overhead.index_lookup_requests++;
+
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        /* Searching in fingerprint cache */
+        upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        upgrade_index_overhead.cache_lookup_requests++;
+        if(v){
+            upgrade_index_overhead.cache_hits++;
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+            SET_CHUNK(c, CHUNK_DUPLICATE);
+        }
+    }
+
+    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+        upgrade_index_overhead.lookup_requests_for_unique++;
+        VERBOSE("_upgrade_index_lookup_constrained: non-existing fingerprint");
+    }
+}
+
 void upgrade_index_lookup_2D_filter(struct chunk *c) {
     // 2D index lookup in filter phase, to count separately
     if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
@@ -597,6 +622,10 @@ int upgrade_index_lookup(struct chunk* c) {
         _upgrade_index_lookup(c);
     } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
         _upgrade_index_lookup_c2c(c);
+    } else if (destor.upgrade_level == UPGRADE_SIMILARITY) {
+        _upgrade_index_lookup_constrained(c);
+    } else {
+        assert(0);
     }
 
     TIMER_END(1, jcr.pre_dedup_time);
