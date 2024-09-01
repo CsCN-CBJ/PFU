@@ -13,22 +13,22 @@ void init_ror(int index) {
     redisContext *conn = connList[index];
     if (conn == NULL || conn->err) {
         if (conn) {
-            fprintf(stderr, "Connection error: %d %s\n", conn->err, conn->errstr);
+            fprintf(stderr, "Index %d connection error: %d %s\n", index, conn->err, conn->errstr);
             redisFree(conn);
         } else {
             perror("Connection error: can't allocate redis context\n");
         }
         exit(1);
     }
-    // redisReply *reply = redisCommand(conn, "SELECT %d", index);
-    // if (reply == NULL) {
-    //     printf("redisCommand failed: %s\n", conn->errstr);
-    //     exit(1);
-    // } else if (reply->type == REDIS_REPLY_ERROR) {
-    //     printf("redisCommand returned error: %s\n", conn->errstr);
-    //     exit(1);
-    // }
-    // freeReplyObject(reply);
+    redisReply *reply = redisCommand(conn, "FLUSHALL", index);
+    if (reply == NULL) {
+        fprintf(stderr, "redisCommand failed: %s\n", conn->errstr);
+        exit(1);
+    } else if (reply->type == REDIS_REPLY_ERROR) {
+        fprintf(stderr, "redisCommand returned error: %s\n", conn->errstr);
+        exit(1);
+    }
+    freeReplyObject(reply);
 }
 
 void initDB(int index) {
