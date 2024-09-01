@@ -675,6 +675,130 @@ static void* filter_thread_2D(void* arg) {
     return NULL;
 }
 
+static void* filter_thread_Similarity(void* arg) {
+    struct fileRecipeMeta* r = NULL;
+	struct backupVersion* bv = jcr.new_bv;
+    GHashTable *htb = NULL;
+    upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER); // sql insertion buffer
+    int kv_num = 0;
+	GSequence *file_chunks = NULL;
+	int in_container = FALSE;
+
+    DECLARE_TIME_RECORDER("filter_thread");
+
+	while (1) {
+		struct chunk* c = sync_queue_pop(hash_queue);
+
+		if (c == NULL) {
+			sync_queue_term(hash_queue);
+			break;
+		}
+
+        TIMER_DECLARE(1);
+        TIMER_BEGIN(1);
+
+        BEGIN_TIME_RECORD
+
+		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
+			assert(r == NULL);
+			r = new_file_recipe_meta(c->data); // filename
+			file_chunks = g_sequence_new(free_chunk);
+			free_chunk(c);
+		} else if (CHECK_CHUNK(c, CHUNK_FILE_END)) {
+            assert(!in_container);
+			free_chunk(c);
+
+			append_segment_flag(bv, CHUNK_SEGMENT_START, g_sequence_get_length(file_chunks));
+			// iter seq
+			GSequenceIter *iter = g_sequence_get_begin_iter(file_chunks);
+			GSequenceIter *end = g_sequence_get_end_iter(file_chunks);
+			for (; iter != end; iter = g_sequence_iter_next(iter)) {
+				c = g_sequence_get(iter);
+				assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+				struct chunkPointer cp;
+        		cp.id = c->id;
+        		assert(cp.id>=0);
+        		memcpy(&cp.fp, &c->fp, sizeof(fingerprint));
+        		cp.size = c->size;
+        		append_n_chunk_pointers(bv, &cp ,1);
+        		r->chunknum++;
+        		r->filesize += c->size;
+
+    	    	jcr.chunk_num++;
+	    	    jcr.data_size += c->size;
+			}
+			append_file_recipe_meta(bv, r);
+			free_file_recipe_meta(r);
+			r = NULL;
+
+			append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
+			jcr.file_num++;
+            g_sequence_free(file_chunks);
+		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
+			assert(!in_container);
+			in_container = TRUE;
+            assert(htb == NULL);
+            htb = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
+			kv_num = 0;
+            free_chunk(c);
+		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_END)) {
+			assert(in_container);
+			in_container = FALSE;
+            assert(c->id>=0);
+            pthread_mutex_lock(&upgrade_index_lock.mutex);
+            setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+            upgrade_fingerprint_cache_insert(htb);
+            htb = NULL;
+            g_hash_table_remove(upgrade_processing, &c->id);
+            pthread_mutex_unlock(&upgrade_index_lock.mutex);
+            DEBUG("Insert id: %ld %d records %ldB into sql", c->id, kv_num, kv_num * sizeof(upgrade_index_kv_t));
+            free_chunk(c);
+		} else if (in_container){
+			// container chunks
+			append_chunk_to_buffer(c);
+			assert(c->id >= 0);
+
+            upgrade_index_kv_t *kvp;
+            kvp = (upgrade_index_kv_t *)malloc(sizeof(upgrade_index_kv_t));
+            memcpy(kvp->old_fp, c->old_fp, sizeof(fingerprint));
+            memcpy(kvp->value.fp, c->fp, sizeof(fingerprint));
+            kvp->value.id = c->id;
+            g_hash_table_insert(htb, &kvp->old_fp, &kvp->value);
+
+            memcpy(&kv[kv_num], kvp, sizeof(upgrade_index_kv_t));
+            ++kv_num;
+
+            free_chunk(c);
+		} else {
+			// recipe chunks
+            if (c->id == TEMPORARY_ID) {
+                UNSET_CHUNK(c, CHUNK_DUPLICATE);
+            }
+            if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+                // c->id == TEMPORARY_ID 代表这个chunk在pre_dedup时还在处理
+                pthread_mutex_lock(&upgrade_index_lock.mutex);
+                upgrade_index_lookup_2D_filter(c);
+                pthread_mutex_unlock(&upgrade_index_lock.mutex);
+            }
+            assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+            assert(c->id >= 0);
+            
+			g_sequence_append(file_chunks, c);
+		}
+        END_TIME_RECORD
+        TIMER_END(1, jcr.filter_time);
+	}
+    if (storage_buffer.container_buffer
+    		&& !container_empty(storage_buffer.container_buffer)){
+        flush_container();
+    }
+    /* All files done */
+    FINISH_TIME_RECORD
+    free(kv);
+    jcr.status = JCR_STATUS_DONE;
+    return NULL;
+}
+
 void start_filter_phase() {
 
 	storage_buffer.container_buffer = NULL;
@@ -684,6 +808,8 @@ void start_filter_phase() {
     if (job == DESTOR_UPDATE) {
         if (destor.upgrade_level == UPGRADE_2D_RELATION) 
             pthread_create(&filter_t, NULL, filter_thread_2D, NULL);
+        else if (destor.upgrade_level == UPGRADE_SIMILARITY)
+            pthread_create(&filter_t, NULL, filter_thread_Similarity, NULL);
         else if (destor.upgrade_level == UPGRADE_1D_RELATION)
             pthread_create(&filter_t, NULL, filter_thread, NULL);
         else
@@ -695,7 +821,7 @@ void start_filter_phase() {
 
 void stop_filter_phase() {
     pthread_join(filter_t, NULL);
-    if (destor.upgrade_level != UPGRADE_2D_RELATION)
+    if (destor.upgrade_level == UPGRADE_NAIVE || destor.upgrade_level == UPGRADE_1D_RELATION)
         close_har();
 	NOTICE("filter phase stops successfully!");
 
