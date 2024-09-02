@@ -67,6 +67,62 @@ static void* read_recipe_thread(void *arg) {
 	return NULL;
 }
 
+static void* read_similarity_recipe_thread(void *arg) {
+
+	int i, j, k;
+	fingerprint zero_fp;
+	memset(zero_fp, 0, sizeof(fingerprint));
+	DECLARE_TIME_RECORDER("read_recipe_thread");
+	struct fileRecipeMeta **recipeList = malloc(sizeof(struct fileRecipeMeta *) * jcr.bv->number_of_files);
+	struct chunkPointer **chunkList = malloc(sizeof(struct chunkPointer *) * jcr.bv->number_of_files);
+
+	// read all recipes and calculate features
+	TIMER_DECLARE(1);
+	TIMER_BEGIN(1);
+	BEGIN_TIME_RECORD;
+	for (i = 0; i < jcr.bv->number_of_files; i++) {
+		struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
+		struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &k);
+		assert(r->chunknum == k);
+		recipeList[i] = r;
+		chunkList[i] = cp;
+	}
+	END_TIME_RECORD;
+
+	// send recipes
+	for (i = 0; i < jcr.bv->number_of_files; i++) {
+		struct fileRecipeMeta *r = recipeList[i];
+		struct chunkPointer *cp = chunkList[i];
+
+		struct chunk *c = new_chunk(sdslen(r->filename) + 1);
+		strcpy(c->data, r->filename);
+		SET_CHUNK(c, CHUNK_FILE_START);
+		sync_queue_push(upgrade_recipe_queue, c);
+
+		for (j = 0; j < r->chunknum; j++) {
+			struct chunk* c = new_chunk(0);
+			memcpy(&c->old_fp, &cp[j].fp, sizeof(fingerprint));
+			assert(!memcmp(c->old_fp + 20, zero_fp, 12));
+			c->size = cp[j].size;
+			c->id = cp[j].id;
+			sync_queue_push(upgrade_recipe_queue, c);
+		}
+
+		c = new_chunk(0);
+		SET_CHUNK(c, CHUNK_FILE_END);
+		sync_queue_push(upgrade_recipe_queue, c);
+
+		free_file_recipe_meta(r);
+		free(cp);
+	}
+
+	FINISH_TIME_RECORD
+	sync_queue_term(upgrade_recipe_queue);
+	free(recipeList);
+	free(chunkList);
+	return NULL;
+}
+
 static void* lru_get_chunk_thread(void *arg) {
 	struct lruCache *cache;
 	// if (destor.simulation_level >= SIMULATION_RESTORE)
@@ -310,14 +366,30 @@ void do_update(int revision, char *path) {
 
     jcr.status = JCR_STATUS_RUNNING;
 	pthread_t recipe_t, read_t, pre_dedup_t, hash_t;
-	pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
-	pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
-	if (destor.upgrade_level == UPGRADE_2D_RELATION || destor.upgrade_level == UPGRADE_SIMILARITY) {
-		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
-	} else {
+	switch (destor.upgrade_level)
+	{
+	case UPGRADE_NAIVE:
+	case UPGRADE_1D_RELATION:
+		pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
+		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 		pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
+		pthread_create(&hash_t, NULL, sha256_thread, NULL);
+		break;
+	case UPGRADE_2D_RELATION:
+		pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
+		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
+		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
+		pthread_create(&hash_t, NULL, sha256_thread, NULL);
+		break;
+	case UPGRADE_SIMILARITY:
+		pthread_create(&recipe_t, NULL, read_similarity_recipe_thread, NULL);
+		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
+		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
+		pthread_create(&hash_t, NULL, sha256_thread, NULL);
+		break;
+	default:
+		assert(0);
 	}
-    pthread_create(&hash_t, NULL, sha256_thread, NULL);
 
 	if (destor.upgrade_level == UPGRADE_NAIVE || destor.upgrade_level == UPGRADE_1D_RELATION) {
 		start_dedup_phase();

@@ -683,6 +683,8 @@ static void* filter_thread_Similarity(void* arg) {
     int kv_num = 0;
 	GSequence *file_chunks = NULL;
 	int in_container = FALSE;
+    containerid container_begin = -1;
+    int16_t container_num = 0;
 
     DECLARE_TIME_RECORDER("filter_thread");
 
@@ -746,6 +748,11 @@ static void* filter_thread_Similarity(void* arg) {
 			in_container = FALSE;
             assert(c->id>=0);
             pthread_mutex_lock(&upgrade_index_lock.mutex);
+            // TODO: set container id htb(c->id, container_begin, container_num)
+            WARNING("container id: %ld, container_begin: %ld, container_num: %d\n", c->id, container_begin, container_num);
+            container_begin = -1;
+            container_num = 0;
+
             setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
             upgrade_fingerprint_cache_insert(htb);
             htb = NULL;
@@ -757,6 +764,13 @@ static void* filter_thread_Similarity(void* arg) {
 			// container chunks
 			append_chunk_to_buffer(c);
 			assert(c->id >= 0);
+            if (container_begin == -1) {
+                container_begin = c->id;
+            }
+            containerid new_num = c->id - container_begin + 1;
+            assert(container_num <= new_num);
+            container_num = new_num;
+            assert(container_num <= 3);
 
             upgrade_index_kv_t *kvp;
             kvp = (upgrade_index_kv_t *)malloc(sizeof(upgrade_index_kv_t));
