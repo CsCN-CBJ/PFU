@@ -67,6 +67,24 @@ static void* read_recipe_thread(void *arg) {
 	return NULL;
 }
 
+#define FEATURE_NUM 4
+#define FEATURE1(x) (x * 3 + 5)
+#define FEATURE2(x) (x * 7 + 11)
+#define FEATURE3(x) (x * 13 + 17)
+#define FEATURE4(x) (x * 19 + 23)
+struct featureList {
+	uint64_t feature;
+	size_t count;
+	size_t max_count;
+	uint64_t *features;
+};
+
+void free_featureList(gpointer data) {
+	struct featureList *list = data;
+	free(list->features);
+	free(list);
+}
+
 static void* read_similarity_recipe_thread(void *arg) {
 
 	int i, j, k;
@@ -75,17 +93,42 @@ static void* read_similarity_recipe_thread(void *arg) {
 	DECLARE_TIME_RECORDER("read_recipe_thread");
 	struct fileRecipeMeta **recipeList = malloc(sizeof(struct fileRecipeMeta *) * jcr.bv->number_of_files);
 	struct chunkPointer **chunkList = malloc(sizeof(struct chunkPointer *) * jcr.bv->number_of_files);
+	// container id -> featureList[ recipe id ]
+	GHashTable *featureTable = g_hash_table_new_full(g_int64_hash, g_int64_equal, free_featureList, NULL);
 
 	// read all recipes and calculate features
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
 	BEGIN_TIME_RECORD;
 	for (i = 0; i < jcr.bv->number_of_files; i++) {
+		uint64_t features[4] = { -1, -1, -1, -1};  // BUGS: 这里使用了uint64, 方便初始化, 而哈希表中是int64
 		struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
 		struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &k);
 		assert(r->chunknum == k);
 		recipeList[i] = r;
 		chunkList[i] = cp;
+
+		for (j = 0; j < r->chunknum; j++) {
+			features[0] = MIN(features[0], FEATURE1(cp[j].id));
+			features[1] = MIN(features[1], FEATURE2(cp[j].id));
+			features[2] = MIN(features[2], FEATURE3(cp[j].id));
+			features[3] = MIN(features[3], FEATURE4(cp[j].id));
+		}
+		for (k = 0; k < FEATURE_NUM; k++) {
+			struct featureList *list = g_hash_table_lookup(featureTable, &features[k]);
+			if (!list) {
+				list = malloc(sizeof(struct featureList));
+				list->count = 0;
+				list->max_count = 1;
+				list->features = malloc(sizeof(uint64_t) * list->max_count);
+				list->feature = features[k];
+				g_hash_table_insert(featureTable, &list->feature, list);
+			} else if (list->count >= list->max_count) {
+				list->max_count *= 2;
+				list->features = realloc(list->features, sizeof(uint64_t) * list->max_count);
+			}
+			list->features[list->count++] = i;
+		}
 	}
 	END_TIME_RECORD;
 
@@ -118,6 +161,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 
 	FINISH_TIME_RECORD
 	sync_queue_term(upgrade_recipe_queue);
+	g_hash_table_destroy(featureTable);
 	free(recipeList);
 	free(chunkList);
 	return NULL;
