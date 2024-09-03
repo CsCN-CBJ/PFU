@@ -68,21 +68,28 @@ static void* read_recipe_thread(void *arg) {
 }
 
 #define FEATURE_NUM 4
-#define FEATURE1(x) (x * 3 + 5)
-#define FEATURE2(x) (x * 7 + 11)
-#define FEATURE3(x) (x * 13 + 17)
-#define FEATURE4(x) (x * 19 + 23)
+typedef containerid feature;
+typedef feature (*feature_func)(containerid);
+feature feature1(containerid x) { return x * 3 + 5; }
+feature feature2(containerid x) { return x * 7 + 11; }
+feature feature3(containerid x) { return x * 13 + 17; }
+feature feature4(containerid x) { return x * 19 + 23; }
+feature_func feature_func_list[FEATURE_NUM] = {feature1, feature2, feature3, feature4};
 struct featureList {
-	uint64_t feature;
+	feature feature;
 	size_t count;
 	size_t max_count;
-	uint64_t *features;
+	containerid *recipeIDList;
 };
 
 void free_featureList(gpointer data) {
 	struct featureList *list = data;
-	free(list->features);
+	free(list->recipeIDList);
 	free(list);
+}
+
+int compare_container_id(void *a, void *b) {
+	return *(containerid*) a == *(containerid*) b;
 }
 
 static void* read_similarity_recipe_thread(void *arg) {
@@ -101,7 +108,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 	TIMER_BEGIN(1);
 	BEGIN_TIME_RECORD;
 	for (i = 0; i < jcr.bv->number_of_files; i++) {
-		uint64_t features[4] = { -1, -1, -1, -1};  // BUGS: 这里使用了uint64, 方便初始化, 而哈希表中是int64
+		feature features[4] = { LLONG_MAX, LLONG_MAX, LLONG_MAX, LLONG_MAX };
 		struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
 		struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &k);
 		assert(r->chunknum == k);
@@ -109,10 +116,9 @@ static void* read_similarity_recipe_thread(void *arg) {
 		chunkList[i] = cp;
 
 		for (j = 0; j < r->chunknum; j++) {
-			features[0] = MIN(features[0], FEATURE1(cp[j].id));
-			features[1] = MIN(features[1], FEATURE2(cp[j].id));
-			features[2] = MIN(features[2], FEATURE3(cp[j].id));
-			features[3] = MIN(features[3], FEATURE4(cp[j].id));
+			for (k = 0; k < FEATURE_NUM; k++) {
+				features[k] = MIN(features[k], feature_func_list[k](cp[j].id));
+			}
 		}
 		for (k = 0; k < FEATURE_NUM; k++) {
 			struct featureList *list = g_hash_table_lookup(featureTable, &features[k]);
@@ -120,19 +126,22 @@ static void* read_similarity_recipe_thread(void *arg) {
 				list = malloc(sizeof(struct featureList));
 				list->count = 0;
 				list->max_count = 1;
-				list->features = malloc(sizeof(uint64_t) * list->max_count);
+				list->recipeIDList = malloc(sizeof(containerid) * list->max_count);
 				list->feature = features[k];
 				g_hash_table_insert(featureTable, &list->feature, list);
 			} else if (list->count >= list->max_count) {
 				list->max_count *= 2;
-				list->features = realloc(list->features, sizeof(uint64_t) * list->max_count);
+				list->recipeIDList = realloc(list->recipeIDList, sizeof(containerid) * list->max_count);
 			}
-			list->features[list->count++] = i;
+			list->recipeIDList[list->count++] = i;
 		}
 	}
+	TIMER_END(1, jcr.read_recipe_time);
 	END_TIME_RECORD;
 
 	// send recipes
+	struct lruCache *lru = new_lru_cache(destor.index_cache_size, free, compare_container_id);
+	feature featuresInLRU[FEATURE_NUM] = { LLONG_MAX, LLONG_MAX, LLONG_MAX, LLONG_MAX };
 	for (i = 0; i < jcr.bv->number_of_files; i++) {
 		struct fileRecipeMeta *r = recipeList[i];
 		struct chunkPointer *cp = chunkList[i];
@@ -149,6 +158,46 @@ static void* read_similarity_recipe_thread(void *arg) {
 			c->size = cp[j].size;
 			c->id = cp[j].id;
 			sync_queue_push(upgrade_recipe_queue, c);
+
+			// simulate LRU
+			// 如果找到, 会自动将其移到头部
+			containerid *id_p = lru_cache_lookup(lru, &c->id);
+			if (id_p) continue;
+			if (lru->size == 0) {
+				for (k = 0; k < FEATURE_NUM; k++) {
+					assert(featuresInLRU[k] == LLONG_MAX);
+					featuresInLRU[k] = feature_func_list[k](c->id);
+				}
+				id_p = malloc(sizeof(containerid));
+				*id_p = c->id;
+				lru_cache_insert(lru, id_p, NULL, NULL);
+				continue;
+			}
+
+			// 插入新的containerid
+			assert(lru->elem_queue_tail);
+			containerid lastID = *(containerid *)lru->elem_queue_tail->data;
+			id_p = malloc(sizeof(containerid));
+			*id_p = c->id;
+			for (k = 0; k < FEATURE_NUM; k++) {
+				feature_func ffunc = feature_func_list[k];
+				feature f = ffunc(c->id);
+				assert(f != featuresInLRU[k]);
+				if (f < featuresInLRU[k]) {
+					featuresInLRU[k] = f;
+				} else if (lru_cache_is_full(lru) && ffunc(lastID) == featuresInLRU[k]) {
+					// 如果是最后一个, 需要重新计算特征
+					feature best = f;
+					GList* elem = g_list_first(lru->elem_queue);
+					// 最后一个不参与
+					while (elem && elem->next) {
+						best = MIN(best, ffunc(*(containerid *)elem->data));
+						elem = g_list_next(elem);
+					}
+					featuresInLRU[k] = best;
+				}
+			}
+			lru_cache_insert(lru, id_p, NULL, NULL);
 		}
 
 		c = new_chunk(0);
@@ -161,6 +210,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 
 	FINISH_TIME_RECORD
 	sync_queue_term(upgrade_recipe_queue);
+	free_lru_cache(lru);
 	g_hash_table_destroy(featureTable);
 	free(recipeList);
 	free(chunkList);
