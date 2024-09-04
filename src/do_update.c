@@ -100,8 +100,11 @@ static void* read_similarity_recipe_thread(void *arg) {
 	DECLARE_TIME_RECORDER("read_recipe_thread");
 	struct fileRecipeMeta **recipeList = malloc(sizeof(struct fileRecipeMeta *) * jcr.bv->number_of_files);
 	struct chunkPointer **chunkList = malloc(sizeof(struct chunkPointer *) * jcr.bv->number_of_files);
-	// container id -> featureList[ recipe id ]
-	GHashTable *featureTable = g_hash_table_new_full(g_int64_hash, g_int64_equal, free_featureList, NULL);
+	// list[ feature -> featureList[ recipe id ] ]
+	GHashTable *featureTable[FEATURE_NUM];
+	for (i = 0; i < FEATURE_NUM; i++) {
+		featureTable[i] = g_hash_table_new_full(g_int64_hash, g_int64_equal, free_featureList, NULL);
+	}
 
 	// read all recipes and calculate features
 	TIMER_DECLARE(1);
@@ -115,20 +118,22 @@ static void* read_similarity_recipe_thread(void *arg) {
 		recipeList[i] = r;
 		chunkList[i] = cp;
 
+		// calculate features
 		for (j = 0; j < r->chunknum; j++) {
 			for (k = 0; k < FEATURE_NUM; k++) {
 				features[k] = MIN(features[k], feature_func_list[k](cp[j].id));
 			}
 		}
+		// insert features into featureTable separately
 		for (k = 0; k < FEATURE_NUM; k++) {
-			struct featureList *list = g_hash_table_lookup(featureTable, &features[k]);
+			struct featureList *list = g_hash_table_lookup(featureTable[k], &features[k]);
 			if (!list) {
 				list = malloc(sizeof(struct featureList));
 				list->count = 0;
 				list->max_count = 1;
 				list->recipeIDList = malloc(sizeof(containerid) * list->max_count);
 				list->feature = features[k];
-				g_hash_table_insert(featureTable, &list->feature, list);
+				g_hash_table_insert(featureTable[k], &list->feature, list);
 			} else if (list->count >= list->max_count) {
 				list->max_count *= 2;
 				list->recipeIDList = realloc(list->recipeIDList, sizeof(containerid) * list->max_count);
@@ -142,9 +147,61 @@ static void* read_similarity_recipe_thread(void *arg) {
 	// send recipes
 	struct lruCache *lru = new_lru_cache(destor.index_cache_size, free, compare_container_id);
 	feature featuresInLRU[FEATURE_NUM] = { LLONG_MAX, LLONG_MAX, LLONG_MAX, LLONG_MAX };
+	GHashTable *sendedRecipe = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 	for (i = 0; i < jcr.bv->number_of_files; i++) {
-		struct fileRecipeMeta *r = recipeList[i];
-		struct chunkPointer *cp = chunkList[i];
+		// 使用新的htb记录recipe的引用次数
+		// containerid recipeID -> int64_t ref
+		GHashTable *recipeRef = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, free);
+		containerid bestRecipeID = -1;
+		int64_t bestRecipeRef = -1;
+		for (j = 0; j < FEATURE_NUM && bestRecipeRef < FEATURE_NUM && i != 0; j++) {
+			feature f = featuresInLRU[j];
+			struct featureList *list = g_hash_table_lookup(featureTable[j], &f);
+			if (!list) continue;
+			assert(list->feature == f);
+			for (k = 0; k < list->count; k++) {
+				containerid rid = list->recipeIDList[k];
+				// 跳过已发送的recipe
+				if (g_hash_table_lookup(sendedRecipe, &rid)) continue;
+				// recipe引用次数+1
+				int64_t *ref_p = (int64_t*)g_hash_table_lookup(recipeRef, &rid);
+				if (ref_p) {
+					(*ref_p)++;
+				} else {
+					containerid *id_p = malloc(sizeof(containerid));
+					*id_p = rid;
+					ref_p = malloc(sizeof(int64_t));
+					*ref_p = 1;
+					g_hash_table_insert(recipeRef, id_p, ref_p);
+				}
+				// 更新最佳recipe
+				if (*ref_p > bestRecipeRef) {
+					bestRecipeRef = *ref_p;
+					bestRecipeID = rid;
+					assert(bestRecipeRef <= FEATURE_NUM);
+					if (bestRecipeRef == FEATURE_NUM) break;
+				}
+			}
+		}
+		g_hash_table_destroy(recipeRef);
+		// 如果没有找到任何相似的recipe, 选择第一个未发送的recipe
+		if (bestRecipeID == -1) {
+			for (containerid id = 0; id < jcr.bv->number_of_files; id++) {
+				if (!g_hash_table_lookup(sendedRecipe, &id)) {
+					bestRecipeID = id;
+					break;
+				}
+			}
+		}
+		assert(bestRecipeID >= 0);
+
+		// 使用htb标记recipe是否已经发送
+		containerid *recipeID_p = malloc(sizeof(containerid));
+		*recipeID_p = bestRecipeID;
+		struct fileRecipeMeta *r = recipeList[bestRecipeID];
+		struct chunkPointer *cp = chunkList[bestRecipeID];
+		NOTICE("Send recipe %ld\n", bestRecipeID);
+		g_hash_table_insert(sendedRecipe, recipeID_p, "1");
 
 		struct chunk *c = new_chunk(sdslen(r->filename) + 1);
 		strcpy(c->data, r->filename);
@@ -152,6 +209,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 		sync_queue_push(upgrade_recipe_queue, c);
 
 		for (j = 0; j < r->chunknum; j++) {
+			// 遍历recipe中所有chunk, 对其containerid进行特征计算
 			struct chunk* c = new_chunk(0);
 			memcpy(&c->old_fp, &cp[j].fp, sizeof(fingerprint));
 			assert(!memcmp(c->old_fp + 20, zero_fp, 12));
@@ -211,7 +269,10 @@ static void* read_similarity_recipe_thread(void *arg) {
 	FINISH_TIME_RECORD
 	sync_queue_term(upgrade_recipe_queue);
 	free_lru_cache(lru);
-	g_hash_table_destroy(featureTable);
+	g_hash_table_destroy(sendedRecipe);
+	for (i = 0; i < FEATURE_NUM; i++) {
+		g_hash_table_destroy(featureTable[i]);
+	}
 	free(recipeList);
 	free(chunkList);
 	return NULL;
