@@ -253,8 +253,7 @@ void write_container(struct container* c) {
 
 }
 
-struct container* retrieve_container_by_id(containerid id) {
-	FILE *fp = old_fp;
+struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 	pthread_mutex_t *mutex = &old_mutex;
 	struct container *c = (struct container*) malloc(sizeof(struct container));
 	c->fp_size = READ_CONTAINER_SZ;
@@ -322,6 +321,14 @@ struct container* retrieve_container_by_id(containerid id) {
 	}
 
 	return c;
+}
+
+struct container* retrieve_container_by_id(containerid id) {
+	return _retrieve_container_by_id(id, old_fp);
+}
+
+struct container* retrieve_new_container_by_id(containerid id) {
+	return _retrieve_container_by_id(id, new_fp);
 }
 
 static struct containerMeta* container_meta_duplicate(struct container *c) {

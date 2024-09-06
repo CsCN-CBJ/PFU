@@ -10,6 +10,7 @@
 /* defined in index.c */
 extern struct index_overhead index_overhead, upgrade_index_overhead;
 extern GHashTable *upgrade_processing;
+extern GHashTable *upgrade_container;
 
 upgrade_lock_t upgrade_index_lock;
 
@@ -506,38 +507,70 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		assert(c->id >= 0);
 		DEBUG("lru_get_chunk_thread_2D %ld", c->id);
 		BEGIN_TIME_RECORD;
-		struct container *con = retrieve_container_by_id(c->id);
+		struct containerMap *cm = g_hash_table_lookup(upgrade_container, &c->id);
+		struct container **conList;
+		int16_t container_num = 0;
+		int is_new;
+		if (cm) {
+			assert(cm->old_id == c->id);
+			conList = malloc(sizeof(struct container *) * cm->container_num);
+			for (int i = 0; i < cm->container_num; i++) {
+				conList[i] = retrieve_new_container_by_id(cm->new_id + i);
+			}
+			container_num = cm->container_num;
+			is_new = TRUE;
+		} else {
+			conList = malloc(sizeof(struct container *));
+			conList[0] = retrieve_container_by_id(c->id);
+			assert(conList[0]);
+			container_num = 1;
+			is_new = FALSE;
+		}
 		END_TIME_RECORD
-		assert(con);
 
 		// send container
 		ck = new_chunk(0);
 		SET_CHUNK(ck, CHUNK_CONTAINER_START);
+		if (is_new) {
+			SET_CHUNK(ck, CHUNK_REPROCESS);
+		}
 		TIMER_END(1, jcr.read_chunk_time);
 		sync_queue_push(upgrade_chunk_queue, ck);
 		TIMER_BEGIN(1);
 
 		GHashTableIter iter;
 		gpointer key, value;
-		g_hash_table_iter_init(&iter, con->meta.map);
-		while(g_hash_table_iter_next(&iter, &key, &value)){
-			ck = get_chunk_in_container(con, key);
-			assert(ck);
-			memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
-			ck->id = TEMPORARY_ID;
-			TIMER_END(1, jcr.read_chunk_time);
-			sync_queue_push(upgrade_chunk_queue, ck);
-			TIMER_BEGIN(1);
+		for (int i = 0; i < container_num; i++) {
+			struct container *con = conList[i];
+			g_hash_table_iter_init(&iter, con->meta.map);
+			while(g_hash_table_iter_next(&iter, &key, &value)){
+				ck = get_chunk_in_container(con, key);
+				assert(ck);
+				if (is_new) {
+					memcpy(ck->fp, ck->fp, sizeof(fingerprint));
+					SET_CHUNK(ck, CHUNK_REPROCESS);
+				} else {
+					memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
+				}
+				ck->id = TEMPORARY_ID;
+				TIMER_END(1, jcr.read_chunk_time);
+				sync_queue_push(upgrade_chunk_queue, ck);
+				TIMER_BEGIN(1);
+			}
+			free_container(con);
 		}
 
 		ck = new_chunk(0);
 		ck->id = c->id;
 		SET_CHUNK(ck, CHUNK_CONTAINER_END);
+		if (is_new) {
+			SET_CHUNK(ck, CHUNK_REPROCESS);
+		}
 		TIMER_END(1, jcr.read_chunk_time);
 		sync_queue_push(upgrade_chunk_queue, ck);
 		TIMER_BEGIN(1);
 
-		free_container(con);
+		free(conList);
 		jcr.read_container_num++;
 			
 		TIMER_END(1, jcr.read_chunk_time);
@@ -637,10 +670,19 @@ static void* sha256_thread(void* arg) {
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
 		jcr.hash_num++;
-		SHA256_CTX ctx;
-		SHA256_Init(&ctx);
-		SHA256_Update(&ctx, c->data, c->size);
-		SHA256_Final(c->fp, &ctx);
+		if (CHECK_CHUNK(c, CHUNK_REPROCESS)) {
+			// 计算SHA1
+			SHA_CTX ctx;
+			SHA1_Init(&ctx);
+			SHA1_Update(&ctx, c->data, c->size);
+			SHA1_Final(c->old_fp, &ctx);
+		} else {
+			// 计算SHA256
+			SHA256_CTX ctx;
+			SHA256_Init(&ctx);
+			SHA256_Update(&ctx, c->data, c->size);
+			SHA256_Final(c->fp, &ctx);
+		}
 		TIMER_END(1, jcr.hash_time);
 
 		END_TIME_RECORD

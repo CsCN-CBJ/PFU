@@ -10,6 +10,7 @@
 struct index_overhead index_overhead;
 struct index_overhead upgrade_index_overhead;
 GHashTable *upgrade_processing;
+GHashTable *upgrade_container;
 
 struct index_buffer index_buffer;
 
@@ -121,6 +122,7 @@ void init_index() {
     init_fingerprint_cache();
     init_upgrade_fingerprint_cache();
     upgrade_processing = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
+    upgrade_container = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 
     memset(&index_overhead, 0, sizeof(struct index_overhead));
     memset(&upgrade_index_overhead, 0, sizeof(struct index_overhead));
@@ -133,6 +135,7 @@ void close_index() {
     // close_upgrade_kvstore();
     assert(g_hash_table_size(upgrade_processing) == 0);
     g_hash_table_destroy(upgrade_processing);
+    g_hash_table_destroy(upgrade_container);
 }
 
 extern struct{

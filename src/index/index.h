@@ -25,6 +25,11 @@ void close_index();
  */
 int index_lookup(struct segment*);
 int upgrade_index_lookup(struct chunk *c);
+struct containerMap {
+    containerid old_id;
+    containerid new_id;
+    int16_t container_num;
+};
 void upgrade_index_lookup_2D_filter(struct chunk *c);
 /*
  * Insert/update fingerprints.

@@ -211,6 +211,7 @@ int job;
 #define CHUNK_SEGMENT_END (0x0008)
 #define CHUNK_CONTAINER_START (0x0010) /* 只在upgrade时使用, 不会与下面的冲突 */
 #define CHUNK_CONTAINER_END (0x0020)
+#define CHUNK_REPROCESS (0x0040) // 需要读取新container重新计算sha1
 
 /* Flags for restore */
 #define CHUNK_WAIT 0x0010

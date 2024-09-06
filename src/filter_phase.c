@@ -11,6 +11,7 @@
 static pthread_t filter_t;
 static int64_t chunk_num;
 extern GHashTable *upgrade_processing;
+extern GHashTable *upgrade_container;
 
 struct{
 	/* accessed in dedup phase */
@@ -748,12 +749,24 @@ static void* filter_thread_Similarity(void* arg) {
 			in_container = FALSE;
             assert(c->id>=0);
             pthread_mutex_lock(&upgrade_index_lock.mutex);
-            // TODO: set container id htb(c->id, container_begin, container_num)
-            WARNING("container id: %ld, container_begin: %ld, container_num: %d\n", c->id, container_begin, container_num);
-            container_begin = -1;
-            container_num = 0;
 
-            setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+            if (!CHECK_CHUNK(c, CHUNK_REPROCESS)) {
+                // add to containerMap
+                struct containerMap *cm = malloc(sizeof(struct containerMap));
+                cm->old_id = c->id;
+                cm->new_id = container_begin;
+                cm->container_num = container_num;
+                g_hash_table_insert(upgrade_container, &cm->old_id, cm);
+                NOTICE("container id: %ld, container_begin: %ld, container_num: %d\n", c->id, container_begin, container_num);
+                container_begin = -1;
+                container_num = 0;
+
+                setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+            } else {
+                // 检查热process的逻辑是否正确 随时可删
+                assert(container_begin == -1);
+                assert(container_num == 0);
+            }
             upgrade_fingerprint_cache_insert(htb);
             htb = NULL;
             g_hash_table_remove(upgrade_processing, &c->id);
@@ -762,15 +775,17 @@ static void* filter_thread_Similarity(void* arg) {
             free_chunk(c);
 		} else if (in_container){
 			// container chunks
-			append_chunk_to_buffer(c);
-			assert(c->id >= 0);
-            if (container_begin == -1) {
-                container_begin = c->id;
+            if (!CHECK_CHUNK(c, CHUNK_REPROCESS)) {
+                append_chunk_to_buffer(c);
+                assert(c->id >= 0);
+                if (container_begin == -1) {
+                    container_begin = c->id;
+                }
+                containerid new_num = c->id - container_begin + 1;
+                assert(container_num <= new_num);
+                container_num = new_num;
+                assert(container_num <= 3);
             }
-            containerid new_num = c->id - container_begin + 1;
-            assert(container_num <= new_num);
-            container_num = new_num;
-            assert(container_num <= 3);
 
             upgrade_index_kv_t *kvp;
             kvp = (upgrade_index_kv_t *)malloc(sizeof(upgrade_index_kv_t));

@@ -39,6 +39,7 @@ struct container* create_container();
 void write_container(struct container*);
 void write_container_async(struct container*);
 struct container* retrieve_container_by_id(containerid);
+struct container* retrieve_new_container_by_id(containerid);
 struct containerMeta* retrieve_container_meta_by_id(containerid);
 struct containerMeta* retrieve_container_meta_by_id_async(containerid);
 
