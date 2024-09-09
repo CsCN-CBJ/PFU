@@ -680,7 +680,8 @@ static void* filter_thread_Similarity(void* arg) {
     struct fileRecipeMeta* r = NULL;
 	struct backupVersion* bv = jcr.new_bv;
     GHashTable *htb = NULL;
-    upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER); // sql insertion buffer
+    int kv_buffer_size = MAX_META_PER_CONTAINER * 3;
+    upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * kv_buffer_size); // sql insertion buffer
     int kv_num = 0;
 	GSequence *file_chunks = NULL;
 	int in_container = FALSE;
@@ -703,6 +704,7 @@ static void* filter_thread_Similarity(void* arg) {
         BEGIN_TIME_RECORD
 
 		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
+            assert(!in_container);
 			assert(r == NULL);
 			r = new_file_recipe_meta(c->data); // filename
 			file_chunks = g_sequence_new(free_chunk);
@@ -794,6 +796,7 @@ static void* filter_thread_Similarity(void* arg) {
             kvp->value.id = c->id;
             g_hash_table_insert(htb, &kvp->old_fp, &kvp->value);
 
+            assert(kv_num <= kv_buffer_size);
             memcpy(&kv[kv_num], kvp, sizeof(upgrade_index_kv_t));
             ++kv_num;
 
