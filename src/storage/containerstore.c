@@ -254,9 +254,9 @@ void write_container(struct container* c) {
 }
 
 struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
-	pthread_mutex_t *mutex = &old_mutex;
+	pthread_mutex_t *mutex = fp == new_fp ? &new_mutex : &old_mutex;
 	struct container *c = (struct container*) malloc(sizeof(struct container));
-	c->fp_size = READ_CONTAINER_SZ;
+	c->fp_size = fp == new_fp ? sizeof(fingerprint) : READ_CONTAINER_SZ;
 
 	init_container_meta(&c->meta);
 

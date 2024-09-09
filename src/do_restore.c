@@ -237,6 +237,9 @@ void do_restore(int revision, char *path) {
 	assert(sync_queue_size(restore_recipe_queue) == 0);
 
 	free_backup_version(jcr.bv);
+	pthread_join(recipe_t, NULL);
+	pthread_join(read_t, NULL);
+	pthread_join(write_t, NULL);
 
 	TIMER_END(1, jcr.total_time);
 	puts("==== restore end ====");

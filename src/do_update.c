@@ -507,7 +507,9 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		assert(c->id >= 0);
 		DEBUG("lru_get_chunk_thread_2D %ld", c->id);
 		BEGIN_TIME_RECORD;
+		pthread_mutex_lock(&upgrade_index_lock.mutex);
 		struct containerMap *cm = g_hash_table_lookup(upgrade_container, &c->id);
+		pthread_mutex_unlock(&upgrade_index_lock.mutex);
 		struct container **conList;
 		int16_t container_num = 0;
 		int is_new;
@@ -547,12 +549,13 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 				ck = get_chunk_in_container(con, key);
 				assert(ck);
 				if (is_new) {
-					memcpy(ck->fp, ck->fp, sizeof(fingerprint));
+					ck->id = con->meta.id;
 					SET_CHUNK(ck, CHUNK_REPROCESS);
 				} else {
 					memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
+					memset(ck->fp, 0, sizeof(fingerprint));
+					ck->id = TEMPORARY_ID;
 				}
-				ck->id = TEMPORARY_ID;
 				TIMER_END(1, jcr.read_chunk_time);
 				sync_queue_push(upgrade_chunk_queue, ck);
 				TIMER_BEGIN(1);
@@ -644,7 +647,7 @@ static void* sha256_thread(void* arg) {
 	DECLARE_TIME_RECORDER("sha256_thread");
 	// char code[41];
 	// 只有计算在container内的chunk的hash, 如果不是2D, 则始终为TRUE
-	int in_container = destor.upgrade_level == UPGRADE_2D_RELATION ? FALSE : TRUE;
+	int in_container = TRUE;
 	while (1) {
 		struct chunk* c = sync_queue_pop(upgrade_chunk_queue);
 
@@ -666,18 +669,19 @@ static void* sha256_thread(void* arg) {
 
 		BEGIN_TIME_RECORD
 
-		assert(c->id == TEMPORARY_ID);
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
 		jcr.hash_num++;
 		if (CHECK_CHUNK(c, CHUNK_REPROCESS)) {
 			// 计算SHA1
+			assert(c->id >= 0);
 			SHA_CTX ctx;
 			SHA1_Init(&ctx);
 			SHA1_Update(&ctx, c->data, c->size);
 			SHA1_Final(c->old_fp, &ctx);
 		} else {
 			// 计算SHA256
+			assert(c->id == TEMPORARY_ID);
 			SHA256_CTX ctx;
 			SHA256_Init(&ctx);
 			SHA256_Update(&ctx, c->data, c->size);

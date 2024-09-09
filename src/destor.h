@@ -203,6 +203,7 @@ int job;
 #define CHUNK_IN_CACHE (0x0800)
 /* This flag will deny all rewriting, including a sparse chunk */
 #define CHUNK_REWRITE_DENIED (0x1000)
+#define CHUNK_REPROCESS (0x2000) // 需要读取新container重新计算sha1
 
 /* signal chunk */
 #define CHUNK_FILE_START (0x0001)
@@ -211,7 +212,6 @@ int job;
 #define CHUNK_SEGMENT_END (0x0008)
 #define CHUNK_CONTAINER_START (0x0010) /* 只在upgrade时使用, 不会与下面的冲突 */
 #define CHUNK_CONTAINER_END (0x0020)
-#define CHUNK_REPROCESS (0x0040) // 需要读取新container重新计算sha1
 
 /* Flags for restore */
 #define CHUNK_WAIT 0x0010

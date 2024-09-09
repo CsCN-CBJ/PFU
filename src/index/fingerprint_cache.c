@@ -109,6 +109,7 @@ void fingerprint_cache_prefetch(int64_t id){
 */
 
 void free_upgrade_index_value(GHashTable **htb) {
+	g_hash_table_destroy(*htb);
 	free(htb);
 }
 
@@ -146,6 +147,7 @@ void upgrade_fingerprint_cache_insert(GHashTable *htb) {
  * return 0 if not found
 */
 int upgrade_fingerprint_cache_prefetch(containerid id) {
+	assert(destor.upgrade_level == UPGRADE_2D_RELATION);
 	int bufferSize = sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER;
 	upgrade_index_kv_t *kv; // sql insertion buffer
 	size_t valueSize;

@@ -122,7 +122,7 @@ void init_index() {
     init_fingerprint_cache();
     init_upgrade_fingerprint_cache();
     upgrade_processing = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
-    upgrade_container = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
+    upgrade_container = g_hash_table_new_full(g_int64_hash, g_int64_equal, NULL, free);
 
     memset(&index_overhead, 0, sizeof(struct index_overhead));
     memset(&upgrade_index_overhead, 0, sizeof(struct index_overhead));
