@@ -98,9 +98,38 @@ static void find_one_file(sds path) {
 	}
 }
 
+static void find_file_in_list(sds config_path) {
+    char line[256];
+	FILE *file = fopen(config_path, "r");
+    if (file == NULL) {
+		fprintf(stderr, "cannot find %s\n", config_path);
+		exit(1);
+    }
+
+    while (fgets(line, sizeof(line), file)) {
+        if (line[strlen(line) - 1] == '\n') {
+            line[strlen(line) - 1] = '\0';
+        }
+		sds path = sdsnew(line);
+		FILE *f = fopen(path, "r");
+		read_file(path);
+		sdsfree(path);
+    }
+    fclose(file);
+}
+
 static void* read_thread(void *argv) {
 	/* Each file will be processed separately */
-	find_one_file(jcr.path);
+	struct stat st;
+	stat(jcr.path, &st);
+	if (S_ISDIR(st.st_mode)) {
+		find_one_file(jcr.path);
+	} else if (S_ISREG(st.st_mode)) {
+		find_file_in_list(jcr.path);
+	} else {
+		fprintf(stderr, "The path %s is not a regular file or directory\n", jcr.path);
+		exit(1);
+	}
 	sync_queue_term(read_queue);
 	return NULL;
 }
