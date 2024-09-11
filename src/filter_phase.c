@@ -676,7 +676,7 @@ static void* filter_thread_2D(void* arg) {
     return NULL;
 }
 
-static void* filter_thread_Similarity(void* arg) {
+static void* filter_thread_constrained(void* arg) {
     struct fileRecipeMeta* r = NULL;
 	struct backupVersion* bv = jcr.new_bv;
     GHashTable *htb = NULL;
@@ -840,8 +840,8 @@ void start_filter_phase() {
     if (job == DESTOR_UPDATE) {
         if (destor.upgrade_level == UPGRADE_2D_RELATION) 
             pthread_create(&filter_t, NULL, filter_thread_2D, NULL);
-        else if (destor.upgrade_level == UPGRADE_SIMILARITY)
-            pthread_create(&filter_t, NULL, filter_thread_Similarity, NULL);
+        else if (destor.upgrade_level == UPGRADE_SIMILARITY || destor.upgrade_level == UPGRADE_2D_CONSTRAINED)
+            pthread_create(&filter_t, NULL, filter_thread_constrained, NULL);
         else if (destor.upgrade_level == UPGRADE_1D_RELATION)
             pthread_create(&filter_t, NULL, filter_thread, NULL);
         else

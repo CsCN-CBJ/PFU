@@ -625,7 +625,7 @@ int upgrade_index_lookup(struct chunk* c) {
         _upgrade_index_lookup(c);
     } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
         _upgrade_index_lookup_c2c(c);
-    } else if (destor.upgrade_level == UPGRADE_SIMILARITY) {
+    } else if (destor.upgrade_level == UPGRADE_SIMILARITY || destor.upgrade_level == UPGRADE_2D_CONSTRAINED) {
         _upgrade_index_lookup_constrained(c);
     } else {
         assert(0);

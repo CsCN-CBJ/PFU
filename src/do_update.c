@@ -314,6 +314,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 			}
 			list->recipeIDList[list->count++] = i;
 		}
+		jcr.pre_process_file_num++;
 	}
 	TIMER_END(1, jcr.read_recipe_time);
 	END_TIME_RECORD;
@@ -375,7 +376,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 		*recipeID_p = bestRecipeID;
 		struct fileRecipeMeta *r = recipeList[bestRecipeID];
 		struct chunkPointer *cp = chunkList[bestRecipeID];
-		NOTICE("Send recipe %ld\n", bestRecipeID);
+		NOTICE("Send recipe %s", r->filename);
 		g_hash_table_insert(sendedRecipe, recipeID_p, "1");
 
 		// 发送recipe
@@ -624,7 +625,7 @@ static void* pre_dedup_thread(void *arg) {
 			// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
 			// }
 			BEGIN_TIME_RECORD
-			if (destor.upgrade_level == UPGRADE_2D_RELATION || destor.upgrade_level == UPGRADE_SIMILARITY) {
+			if (destor.upgrade_level == UPGRADE_2D_RELATION || destor.upgrade_level == UPGRADE_SIMILARITY || destor.upgrade_level == UPGRADE_2D_CONSTRAINED) {
 				if (g_hash_table_lookup(upgrade_processing, &c->id)) {
 					// container正在处理中, 标记为duplicate, c->id为TEMPORARY_ID
 					DEBUG("container processing: %ld", c->id);
@@ -780,8 +781,8 @@ void do_update(int revision, char *path) {
     do{
         sleep(5);
         /*time_t now = time(NULL);*/
-        fprintf(stderr, "%" PRId64 " bytes, %" PRId32 " chunks, %d files processed\r", 
-                jcr.data_size, jcr.chunk_num, jcr.file_num);
+        fprintf(stderr, "%" PRId64 " bytes, %" PRId32 " chunks, %d files processed, %d files pre_processed\r", 
+                jcr.data_size, jcr.chunk_num, jcr.file_num, jcr.pre_process_file_num);
     }while(jcr.status == JCR_STATUS_RUNNING || jcr.status != JCR_STATUS_DONE);
     fprintf(stderr, "%" PRId64 " bytes, %" PRId32 " chunks, %d files processed\n", 
         jcr.data_size, jcr.chunk_num, jcr.file_num);
@@ -877,10 +878,11 @@ void do_update(int revision, char *path) {
 	fclose(fp);
 
 	fp = stdout;
+	fprintf(fp, "========== jcr_result ==========\n");
 	print_jcr_result(fp);
-	fprintf(fp, "upgrade_index_overhead\n");
+	fprintf(fp, "========== upgrade_index_overhead ==========\n");
 	print_index_overhead(fp, &upgrade_index_overhead);
-	fprintf(fp, "index_overhead\n");
+	fprintf(fp, "========== index_overhead ==========\n");
 	print_index_overhead(fp, &index_overhead);
 	// fclose(fp);
 

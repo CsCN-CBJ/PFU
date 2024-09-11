@@ -27,6 +27,7 @@ struct jcr{
     int status;
 
 	int32_t file_num;
+	int32_t pre_process_file_num;
 	int64_t data_size;
 	int64_t unique_data_size;
 	int32_t chunk_num;
