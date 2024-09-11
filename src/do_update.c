@@ -274,7 +274,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 	DECLARE_TIME_RECORDER("read_recipe_thread");
 	struct fileRecipeMeta **recipeList = malloc(sizeof(struct fileRecipeMeta *) * jcr.bv->number_of_files);
 	struct chunkPointer **chunkList = malloc(sizeof(struct chunkPointer *) * jcr.bv->number_of_files);
-	// list[ feature -> featureList[ recipe id ] ]
+	// list [ hashtable [ feature -> featureList[ recipe id ] ] ]
 	GHashTable *featureTable[FEATURE_NUM];
 	for (i = 0; i < FEATURE_NUM; i++) {
 		featureTable[i] = g_hash_table_new_full(g_int64_hash, g_int64_equal, free_featureList, NULL);
@@ -493,6 +493,7 @@ static void* lru_get_chunk_thread(void *arg) {
 static void* lru_get_chunk_thread_2D(void *arg) {
 	DECLARE_TIME_RECORDER("lru_get_chunk_thread");
 	struct chunk *c, *ck; // c: get from queue, ck: temp chunk
+	struct container *con_buffer = NULL; // 防止两个相邻的container读两次
 	while ((c = sync_queue_pop(pre_dedup_queue))) {
 
 		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
@@ -517,13 +518,21 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 			assert(cm->old_id == c->id);
 			conList = malloc(sizeof(struct container *) * cm->container_num);
 			for (int i = 0; i < cm->container_num; i++) {
-				conList[i] = retrieve_new_container_by_id(cm->new_id + i);
+				if (con_buffer && con_buffer->meta.id == cm->new_id + i) {
+					conList[i] = con_buffer;
+					con_buffer = NULL;
+					jcr.read_container_new_buffered++;
+				} else {
+					conList[i] = retrieve_new_container_by_id(cm->new_id + i);
+					jcr.read_container_new++;
+				}
 			}
 			container_num = cm->container_num;
 			is_new = TRUE;
 		} else {
 			conList = malloc(sizeof(struct container *));
 			conList[0] = retrieve_container_by_id(c->id);
+			jcr.read_container_num++;
 			assert(conList[0]);
 			container_num = 1;
 			is_new = FALSE;
@@ -560,6 +569,10 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 				sync_queue_push(upgrade_chunk_queue, ck);
 				TIMER_BEGIN(1);
 			}
+			if (is_new && i == container_num - 1) {
+				con_buffer = con;
+				break;
+			}
 			free_container(con);
 		}
 
@@ -582,6 +595,9 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 	}
 
 	FINISH_TIME_RECORD
+	if (con_buffer) {
+		free_container(con_buffer);
+	}
 	sync_queue_term(upgrade_chunk_queue);
 	return NULL;
 }
@@ -739,6 +755,7 @@ void do_update(int revision, char *path) {
 		pthread_create(&hash_t, NULL, sha256_thread, NULL);
 		break;
 	case UPGRADE_2D_RELATION:
+	case UPGRADE_2D_CONSTRAINED:
 		pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
 		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
@@ -860,12 +877,11 @@ void do_update(int revision, char *path) {
 	fclose(fp);
 
 	fp = stdout;
-	fprintf(fp, "%u %u %u %u\n", jcr.sql_insert_all, jcr.sql_insert, jcr.sql_fetch, jcr.sql_fetch_buffered);
-	fprintf(fp, "%u %u %u\n", jcr.read_container_num, jcr.hash_num, jcr.sync_buffer_num);
+	print_jcr_result(fp);
+	fprintf(fp, "upgrade_index_overhead\n");
 	print_index_overhead(fp, &upgrade_index_overhead);
-	fprintf(fp, "\n");
+	fprintf(fp, "index_overhead\n");
 	print_index_overhead(fp, &index_overhead);
-	fprintf(fp, "\n");
 	// fclose(fp);
 
 }

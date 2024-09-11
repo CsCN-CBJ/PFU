@@ -68,6 +68,8 @@ struct jcr{
 	uint32_t sql_fetch_buffered;
 
 	uint32_t read_container_num;
+	uint32_t read_container_new;
+	uint32_t read_container_new_buffered; 
 	uint32_t sync_buffer_num;
 };
 
@@ -77,5 +79,6 @@ void init_jcr(char *path);
 void init_backup_jcr(char *path);
 void init_restore_jcr(int revision, char *path);
 void init_update_jcr(int revision, char *path);
+void print_jcr_result(FILE *fp);
 
 #endif /* Jcr_H_ */

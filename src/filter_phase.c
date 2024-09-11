@@ -759,7 +759,7 @@ static void* filter_thread_Similarity(void* arg) {
                 cm->new_id = container_begin;
                 cm->container_num = container_num;
                 g_hash_table_insert(upgrade_container, &cm->old_id, cm);
-                NOTICE("container id: %ld, container_begin: %ld, container_num: %d\n", c->id, container_begin, container_num);
+                DEBUG("container id: %ld, container_begin: %ld, container_num: %d\n", c->id, container_begin, container_num);
                 container_begin = -1;
                 container_num = 0;
 

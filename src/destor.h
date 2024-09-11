@@ -69,7 +69,8 @@ int job;
 #define UPGRADE_NAIVE 0
 #define UPGRADE_1D_RELATION 1
 #define UPGRADE_2D_RELATION 2
-#define UPGRADE_SIMILARITY 3
+#define UPGRADE_2D_CONSTRAINED 3
+#define UPGRADE_SIMILARITY 4
 
 /* Log levels */
 #define DESTOR_DEBUG 0

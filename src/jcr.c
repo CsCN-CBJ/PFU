@@ -103,3 +103,15 @@ void init_update_jcr(int revision, char *path) {
 	jcr.id = revision;
 	jcr.new_id = jcr.new_bv->bv_num;
 }
+
+void print_jcr_result(FILE *fp) {
+	fprintf(fp, "sync_buffer_num: %u\n", jcr.sync_buffer_num);
+	fprintf(fp, "read_container: %u\n", jcr.read_container_num);
+	fprintf(fp, "read_container_new: %u\n", jcr.read_container_new);
+	fprintf(fp, "read_container_new_buffered: %u\n", jcr.read_container_new_buffered);
+	fprintf(fp, "hash_num: %u\n", jcr.hash_num);
+	fprintf(fp, "sql_insert_all: %u\n", jcr.sql_insert_all);
+	fprintf(fp, "sql_insert: %u\n", jcr.sql_insert);
+	fprintf(fp, "sql_fetch: %u\n", jcr.sql_fetch);
+	fprintf(fp, "sql_fetch_buffered: %u\n", jcr.sql_fetch_buffered);
+}

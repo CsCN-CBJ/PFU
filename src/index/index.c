@@ -637,7 +637,13 @@ int upgrade_index_lookup(struct chunk* c) {
 }
 
 void print_index_overhead(FILE *fp, struct index_overhead *overhead) {
-    for(int i = 0; i < sizeof(struct index_overhead) / sizeof(uint32_t); i++) {
-        fprintf(fp, "%u ", ((uint32_t *)overhead)[i]);
-    }
+    fprintf(fp, "index_lookup_requests: %u\n", overhead->index_lookup_requests);
+    fprintf(fp, "storage_buffer_hits: %u\n", overhead->storage_buffer_hits);
+    fprintf(fp, "index_buffer_hits: %u\n", overhead->index_buffer_hits);
+    fprintf(fp, "cache_lookup_requests: %u\n", overhead->cache_lookup_requests);
+    fprintf(fp, "cache_hits: %u\n", overhead->cache_hits);
+    fprintf(fp, "kvstore_lookup_requests: %u\n", overhead->kvstore_lookup_requests);
+    fprintf(fp, "kvstore_hits: %u\n", overhead->kvstore_hits);
+    fprintf(fp, "lookup_requests_for_unique: %u\n", overhead->lookup_requests_for_unique);
+    fprintf(fp, "read_prefetching_units: %u\n", overhead->read_prefetching_units);
 }
