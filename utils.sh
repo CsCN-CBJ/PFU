@@ -28,7 +28,6 @@ function resetAll() {
     rm -rf ${TEST_DIR}
     mkdir -p ${WORKING_DIR}/recipes/
     mkdir -p ${WORKING_DIR}/index/
-    mkdir -p ${SRC_DIR}
     mkdir -p ${LOG_DIR}
 }
 
@@ -39,6 +38,7 @@ function resetWorkingDir() {
 }
 
 function genBasicData() {
+    mkdir -p ${SRC_DIR}
     dd if=/dev/urandom of=${SRC_DIR}/a bs=1M count=100
     dd if=/dev/urandom of=${SRC_DIR}/b bs=1M count=100
     cp ${SRC_DIR}/a ${SRC_DIR}/c

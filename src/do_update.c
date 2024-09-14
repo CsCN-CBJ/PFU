@@ -27,6 +27,7 @@ static void* read_recipe_thread(void *arg) {
 		BEGIN_TIME_RECORD;
 		struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
 		END_TIME_RECORD;
+		NOTICE("Send recipe %s", r->filename);
 
 		struct chunk *c = new_chunk(sdslen(r->filename) + 1);
 		strcpy(c->data, r->filename);
@@ -515,6 +516,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		struct container **conList;
 		int16_t container_num = 0;
 		int is_new;
+		// 将需要读取的container放到conList中
 		if (cm) {
 			assert(cm->old_id == c->id);
 			conList = malloc(sizeof(struct container *) * cm->container_num);
@@ -571,6 +573,9 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 				TIMER_BEGIN(1);
 			}
 			if (is_new && i == container_num - 1) {
+				if (con_buffer) {
+					free_container(con_buffer);
+				}
 				con_buffer = con;
 				break;
 			}
@@ -613,50 +618,48 @@ static void* pre_dedup_thread(void *arg) {
 			break;
 		}
 
-		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
+		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)
+			|| destor.upgrade_level == UPGRADE_NAIVE) {
 			sync_queue_push(pre_dedup_queue, c);
 			continue;
 		}
 
-		if (destor.upgrade_level != UPGRADE_NAIVE) {
-			/* Each duplicate chunk will be marked. */
-			pthread_mutex_lock(&upgrade_index_lock.mutex);
-			// while (upgrade_index_lookup(c) == 0) { // 目前永远是1, 所以不用管cond
-			// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
-			// }
-			BEGIN_TIME_RECORD
-			if (destor.upgrade_level == UPGRADE_2D_RELATION || destor.upgrade_level == UPGRADE_SIMILARITY || destor.upgrade_level == UPGRADE_2D_CONSTRAINED) {
-				if (g_hash_table_lookup(upgrade_processing, &c->id)) {
-					// container正在处理中, 标记为duplicate, c->id为TEMPORARY_ID
-					DEBUG("container processing: %ld", c->id);
-					SET_CHUNK(c, CHUNK_DUPLICATE);
-					c->id = TEMPORARY_ID;
-					jcr.sync_buffer_num++;
-				} else {
-					upgrade_index_lookup(c);
-					if(!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-						// 非重复块需要在下一阶段开始处理, 这个不能放到下面的阶段, 必须在同一锁内
-						int64_t *id = malloc(sizeof(int64_t));
-						*id = c->id;
-						g_hash_table_insert(upgrade_processing, id, "1");
-					}
-				}
-			} else if (destor.upgrade_level == UPGRADE_1D_RELATION) {
-				upgrade_index_lookup(c);
+		/* Each duplicate chunk will be marked. */
+		pthread_mutex_lock(&upgrade_index_lock.mutex);
+		// while (upgrade_index_lookup(c) == 0) { // 目前永远是1, 所以不用管cond
+		// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
+		// }
+		BEGIN_TIME_RECORD
+		if (destor.upgrade_level == UPGRADE_2D_RELATION
+			|| destor.upgrade_level == UPGRADE_2D_CONSTRAINED
+			|| destor.upgrade_level == UPGRADE_SIMILARITY) {
+			if (g_hash_table_lookup(upgrade_processing, &c->id)) {
+				// container正在处理中, 标记为duplicate, c->id为TEMPORARY_ID
+				DEBUG("container processing: %ld", c->id);
+				SET_CHUNK(c, CHUNK_DUPLICATE);
+				c->id = TEMPORARY_ID;
+				jcr.sync_buffer_num++;
 			} else {
-				// Not Implemented
-				assert(0);
+				upgrade_index_lookup(c);
+				if(!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+					// 非重复块需要在下一阶段开始处理, 这个不能放到下面的阶段, 必须在同一锁内
+					int64_t *id = malloc(sizeof(int64_t));
+					*id = c->id;
+					g_hash_table_insert(upgrade_processing, id, "1");
+				}
 			}
-			END_TIME_RECORD
-			pthread_mutex_unlock(&upgrade_index_lock.mutex);
-			
+		} else if (destor.upgrade_level == UPGRADE_1D_RELATION) {
+			upgrade_index_lookup(c);
+		} else {
+			// Not Implemented
+			assert(0);
 		}
-
+		END_TIME_RECORD
+		pthread_mutex_unlock(&upgrade_index_lock.mutex);
 		sync_queue_push(pre_dedup_queue, c);
 	}
 	FINISH_TIME_RECORD
 	sync_queue_term(pre_dedup_queue);
-
 	return NULL;
 }
 
