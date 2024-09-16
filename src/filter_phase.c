@@ -648,7 +648,9 @@ static void* filter_thread_2D(void* arg) {
             free_chunk(c);
 		} else {
 			// recipe chunks
-            if (c->id == TEMPORARY_ID) {
+            if (CHECK_CHUNK(c, CHUNK_PROCESSING)) {
+                // 使用标记而不是id为TEMPORARY_ID来标记这个chunk在pre_dedup时正在处理
+                // 可以避免LRU过小时刚生成的container直接被挤出去的问题
                 UNSET_CHUNK(c, CHUNK_DUPLICATE);
             }
             if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
@@ -803,7 +805,7 @@ static void* filter_thread_constrained(void* arg) {
             free_chunk(c);
 		} else {
 			// recipe chunks
-            if (c->id == TEMPORARY_ID) {
+            if (CHECK_CHUNK(c, CHUNK_PROCESSING)) {
                 UNSET_CHUNK(c, CHUNK_DUPLICATE);
             }
             if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {

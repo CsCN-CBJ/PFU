@@ -275,7 +275,7 @@ void destor_stat() {
 int main(int argc, char **argv) {
 
 	destor_start();
-	log_fp = fopen("/home/cbj/destor/destor.log", "a");
+	log_fp = fopen("destor.log", "w");
 
 	job = DESTOR_BACKUP;
 	int revision = -1;

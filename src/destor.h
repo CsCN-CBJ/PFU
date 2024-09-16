@@ -205,6 +205,7 @@ int job;
 /* This flag will deny all rewriting, including a sparse chunk */
 #define CHUNK_REWRITE_DENIED (0x1000)
 #define CHUNK_REPROCESS (0x2000) // 需要读取新container重新计算sha1
+#define CHUNK_PROCESSING (0x4000) // 正在处理中
 
 /* signal chunk */
 #define CHUNK_FILE_START (0x0001)

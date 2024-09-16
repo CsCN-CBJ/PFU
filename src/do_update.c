@@ -635,9 +635,10 @@ static void* pre_dedup_thread(void *arg) {
 			|| destor.upgrade_level == UPGRADE_SIMILARITY) {
 			if (g_hash_table_lookup(upgrade_processing, &c->id)) {
 				// container正在处理中, 标记为duplicate, c->id为TEMPORARY_ID
-				DEBUG("container processing: %ld", c->id);
+				// DEBUG("container processing: %ld", c->id);
 				SET_CHUNK(c, CHUNK_DUPLICATE);
-				c->id = TEMPORARY_ID;
+				SET_CHUNK(c, CHUNK_PROCESSING);
+				// c->id = TEMPORARY_ID;
 				jcr.sync_buffer_num++;
 			} else {
 				upgrade_index_lookup(c);
