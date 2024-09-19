@@ -12,6 +12,14 @@ extern struct index_overhead index_overhead, upgrade_index_overhead;
 extern GHashTable *upgrade_processing;
 extern GHashTable *upgrade_container;
 
+extern struct{
+    /* accessed in dedup phase */
+    struct container *container_buffer;
+    /* In order to facilitate sampling in container,
+     * we keep a queue for chunks in container buffer. */
+    GSequence *chunks;
+} storage_buffer;
+
 upgrade_lock_t upgrade_index_lock;
 
 static void* read_recipe_thread(void *arg) {
@@ -516,7 +524,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		pthread_mutex_unlock(&upgrade_index_lock.mutex);
 		struct container **conList;
 		int16_t container_num = 0;
-		int is_new;
+		int is_new, using_conBuf = -1;
 		// 将需要读取的container放到conList中
 		if (cm) {
 			assert(cm->old_id == c->id);
@@ -527,7 +535,15 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 					con_buffer = NULL;
 					jcr.read_container_new_buffered++;
 				} else {
-					conList[i] = retrieve_new_container_by_id(cm->new_id + i);
+					if (cm->new_id + i == storage_buffer.container_buffer->meta.id) {
+						// BUGS: 上面没有锁就直接使用了storage_buffer, 不太好, 但是暂时先这样, 有问题再说
+						pthread_mutex_lock(&upgrade_index_lock.mutex);
+						conList[i] = storage_buffer.container_buffer;
+						using_conBuf = i;
+						fprintf(stderr, "using storage_buffer\n");
+					} else {
+						conList[i] = retrieve_new_container_by_id(cm->new_id + i);
+					}
 					jcr.read_container_new++;
 				}
 			}
@@ -572,6 +588,11 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 				TIMER_END(1, jcr.read_chunk_time);
 				sync_queue_push(upgrade_chunk_queue, ck);
 				TIMER_BEGIN(1);
+			}
+			if (using_conBuf == i) {
+				pthread_mutex_unlock(&upgrade_index_lock.mutex);
+				// 不能释放内存
+				continue;
 			}
 			if (is_new && i == container_num - 1) {
 				if (con_buffer) {
