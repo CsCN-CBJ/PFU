@@ -247,8 +247,8 @@ uint64_t LT_b[] = {
     0xeb48a728aaf18d2e,
 };
 #define FEATURE_NUM 4
-typedef containerid feature;
-#define CALC_FEATURE(x, k) ((x) * LT_k[k] + LT_b[k])
+typedef uint64_t feature;
+#define CALC_FEATURE(x, k) (((feature)(x)) * LT_k[k] + LT_b[k])
 
 struct featureList {
 	feature feature;
@@ -333,6 +333,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 		int64_t bestRecipeRef = -1;
 		for (j = 0; j < FEATURE_NUM && bestRecipeRef < FEATURE_NUM && i != 0; j++) {
 			feature f = featuresInLRU[j];
+			assert(f != LLONG_MAX);
 			struct featureList *list = g_hash_table_lookup(featureTable[j], &f);
 			if (!list) continue;
 			assert(list->feature == f);
@@ -377,7 +378,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 		*recipeID_p = bestRecipeID;
 		struct fileRecipeMeta *r = recipeList[bestRecipeID];
 		struct chunkPointer *cp = chunkList[bestRecipeID];
-		NOTICE("Send recipe %s", r->filename);
+		WARNING("Send recipe %s", r->filename);
 		g_hash_table_insert(sendedRecipe, recipeID_p, "1");
 
 		// 发送recipe
