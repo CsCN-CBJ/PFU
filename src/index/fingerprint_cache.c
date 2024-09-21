@@ -123,7 +123,7 @@ void init_upgrade_fingerprint_cache() {
 		init_upgrade_1D_fingerprint_cache();
 		return;
 	}
-	upgrade_lru_queue = new_lru_cache(destor.index_cache_size,
+	upgrade_lru_queue = new_lru_cache(destor.index_cache_size - 1,
 				free_upgrade_index_value, compare_upgrade_index_value);
 }
 

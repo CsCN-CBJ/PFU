@@ -11,6 +11,7 @@ struct index_overhead index_overhead;
 struct index_overhead upgrade_index_overhead;
 GHashTable *upgrade_processing;
 GHashTable *upgrade_container;
+GHashTable *upgrade_storage_buffer = NULL; // 确保当前在storage_buffer中的container不会被LRU踢出
 
 struct index_buffer index_buffer;
 
@@ -512,7 +513,13 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in fingerprint cache */
-        upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        upgrade_index_value_t* v = NULL;
+        if (upgrade_storage_buffer) {
+            v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
+        }
+        if (!v) {
+            v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        }
         upgrade_index_overhead.cache_lookup_requests++;
         if(v){
             upgrade_index_overhead.cache_hits++;
@@ -550,7 +557,13 @@ void _upgrade_index_lookup_constrained(struct chunk *c) {
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in fingerprint cache */
-        upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        upgrade_index_value_t* v = NULL;
+        if (upgrade_storage_buffer) {
+            v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
+        }
+        if (!v) {
+            v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        }
         upgrade_index_overhead.cache_lookup_requests++;
         if(v){
             upgrade_index_overhead.cache_hits++;
@@ -575,7 +588,13 @@ void upgrade_index_lookup_2D_filter(struct chunk *c) {
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in fingerprint cache */
-        upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        upgrade_index_value_t* v = NULL;
+        if (upgrade_storage_buffer) {
+            v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
+        }
+        if (!v) {
+            v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+        }
         index_overhead.cache_lookup_requests++;
         if(v){
             index_overhead.cache_hits++;
