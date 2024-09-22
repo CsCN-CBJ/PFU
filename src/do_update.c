@@ -794,11 +794,11 @@ void do_update(int revision, char *path) {
     do{
         sleep(5);
         /*time_t now = time(NULL);*/
-        fprintf(stderr, "%" PRId64 " bytes, %" PRId32 " chunks, %d files processed, %d files pre_processed\r", 
-                jcr.data_size, jcr.chunk_num, jcr.file_num, jcr.pre_process_file_num);
+        fprintf(stderr, "%" PRId64 " GB, %" PRId32 " chunks, %d files processed, %d files pre_processed\r", 
+                jcr.data_size >> 30, jcr.chunk_num, jcr.file_num, jcr.pre_process_file_num);
     }while(jcr.status == JCR_STATUS_RUNNING || jcr.status != JCR_STATUS_DONE);
-    fprintf(stderr, "%" PRId64 " bytes, %" PRId32 " chunks, %d files processed\n", 
-        jcr.data_size, jcr.chunk_num, jcr.file_num);
+    fprintf(stderr, "%" PRId64 " GB, %" PRId32 " chunks, %d files processed\n", 
+        jcr.data_size >> 30, jcr.chunk_num, jcr.file_num);
 
 	assert(sync_queue_size(upgrade_recipe_queue) == 0);
 	assert(sync_queue_size(upgrade_chunk_queue) == 0);
