@@ -518,7 +518,7 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
             v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
         }
         if (!v) {
-            v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+            v = upgrade_fingerprint_cache_lookup(c);
         }
         upgrade_index_overhead.cache_lookup_requests++;
         if(v){
@@ -533,7 +533,7 @@ void _upgrade_index_lookup_c2c(struct chunk *c) {
         upgrade_index_overhead.kvstore_lookup_requests++;
         if (upgrade_fingerprint_cache_prefetch(c->id)) {
             upgrade_index_overhead.kvstore_hits++;
-            upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+            upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
             assert(v);
             assert(v->id >= 0);
             c->id = v->id;
@@ -562,7 +562,7 @@ void _upgrade_index_lookup_constrained(struct chunk *c) {
             v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
         }
         if (!v) {
-            v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+            v = upgrade_fingerprint_cache_lookup(c);
         }
         upgrade_index_overhead.cache_lookup_requests++;
         if(v){
@@ -593,7 +593,7 @@ void upgrade_index_lookup_2D_filter(struct chunk *c) {
             v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
         }
         if (!v) {
-            v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+            v = upgrade_fingerprint_cache_lookup(c);
         }
         index_overhead.cache_lookup_requests++;
         if(v){
@@ -608,7 +608,7 @@ void upgrade_index_lookup_2D_filter(struct chunk *c) {
         index_overhead.kvstore_lookup_requests++;
         if (upgrade_fingerprint_cache_prefetch(c->id)) {
             index_overhead.kvstore_hits++;
-            upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(&c->old_fp);
+            upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
             assert(v);
             assert(v->id >= 0);
             c->id = v->id;

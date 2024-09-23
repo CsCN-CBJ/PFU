@@ -23,8 +23,8 @@ typedef struct upgrade_index_kv {
 } upgrade_index_kv_t;
 
 void init_upgrade_fingerprint_cache();
-upgrade_index_value_t* upgrade_fingerprint_cache_lookup(fingerprint *old_fp);
-void upgrade_fingerprint_cache_insert(GHashTable *htb);
+upgrade_index_value_t* upgrade_fingerprint_cache_lookup(struct chunk* c);
+void upgrade_fingerprint_cache_insert(containerid id, GHashTable *htb);
 int upgrade_fingerprint_cache_prefetch(containerid id);
 
 upgrade_index_value_t* upgrade_1D_fingerprint_cache_lookup(fingerprint *old_fp);

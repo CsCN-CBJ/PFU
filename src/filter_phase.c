@@ -13,6 +13,7 @@ static int64_t chunk_num;
 extern GHashTable *upgrade_processing;
 extern GHashTable *upgrade_container;
 extern GHashTable *upgrade_storage_buffer;
+containerid upgrade_storage_buffer_id = -1;
 
 struct{
 	/* accessed in dedup phase */
@@ -625,9 +626,10 @@ static void* filter_thread_2D(void* arg) {
             pthread_mutex_lock(&upgrade_index_lock.mutex);
             setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
             if (upgrade_storage_buffer) {
-                upgrade_fingerprint_cache_insert(upgrade_storage_buffer);
+                upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
             }
             upgrade_storage_buffer = htb;
+            upgrade_storage_buffer_id = c->id;
             htb = NULL;
             g_hash_table_remove(upgrade_processing, &c->id);
             pthread_mutex_unlock(&upgrade_index_lock.mutex);
@@ -776,9 +778,10 @@ static void* filter_thread_constrained(void* arg) {
                 assert(container_num == 0);
             }
             if (upgrade_storage_buffer) {
-                upgrade_fingerprint_cache_insert(upgrade_storage_buffer);
+                upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
             }
             upgrade_storage_buffer = htb;
+            upgrade_storage_buffer_id = c->id;
             htb = NULL;
             g_hash_table_remove(upgrade_processing, &c->id);
             pthread_mutex_unlock(&upgrade_index_lock.mutex);

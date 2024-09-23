@@ -14,6 +14,7 @@
 
 static struct lruCache* lru_queue;
 static struct lruCache* upgrade_lru_queue;
+static lruHashMap_t *upgrade_cache;
 
 /* defined in index.c */
 extern struct index_overhead index_overhead, upgrade_index_overhead;
@@ -123,24 +124,23 @@ void init_upgrade_fingerprint_cache() {
 		init_upgrade_1D_fingerprint_cache();
 		return;
 	}
-	upgrade_lru_queue = new_lru_cache(destor.index_cache_size - 1,
-				free_upgrade_index_value, compare_upgrade_index_value);
+	upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, g_hash_table_destroy, g_int64_hash, g_int64_equal);
 }
 
-upgrade_index_value_t* upgrade_fingerprint_cache_lookup(fingerprint *old_fp) {
-	GHashTable **htb = lru_cache_lookup(upgrade_lru_queue, old_fp);
+upgrade_index_value_t* upgrade_fingerprint_cache_lookup(struct chunk* c) {
+	GHashTable *htb = lru_hashmap_lookup(upgrade_cache, &c->id);
 	if (htb) {
-		upgrade_index_value_t* v = g_hash_table_lookup(*htb, old_fp);
+		upgrade_index_value_t* v = g_hash_table_lookup(htb, &c->old_fp);
 		assert(v);
 		return v;
 	}
 	return NULL;
 }
 
-void upgrade_fingerprint_cache_insert(GHashTable *htb) {
-	GHashTable **htb_p = (GHashTable **) malloc(sizeof(GHashTable *));
-	*htb_p = htb;
-	lru_cache_insert(upgrade_lru_queue, htb_p, NULL, NULL);
+void upgrade_fingerprint_cache_insert(containerid id, GHashTable *htb) {
+	containerid *id_p = malloc(sizeof(containerid));
+	*id_p = id;
+	lru_hashmap_insert(upgrade_cache, id_p, htb);
 }
 
 /**
@@ -169,7 +169,7 @@ int upgrade_fingerprint_cache_prefetch(containerid id) {
 		g_hash_table_insert(c, &kv_i->old_fp, &kv_i->value);
 	}
 	free(kv);
-	upgrade_fingerprint_cache_insert(c);
+	upgrade_fingerprint_cache_insert(id, c);
 	return 1;
 }
 

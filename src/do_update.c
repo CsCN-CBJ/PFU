@@ -12,14 +12,6 @@ extern struct index_overhead index_overhead, upgrade_index_overhead;
 extern GHashTable *upgrade_processing;
 extern GHashTable *upgrade_container;
 
-extern struct{
-    /* accessed in dedup phase */
-    struct container *container_buffer;
-    /* In order to facilitate sampling in container,
-     * we keep a queue for chunks in container buffer. */
-    GSequence *chunks;
-} storage_buffer;
-
 upgrade_lock_t upgrade_index_lock;
 
 static void* read_recipe_thread(void *arg) {
