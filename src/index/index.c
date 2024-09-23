@@ -450,7 +450,7 @@ void upgrade_index_update(GSequence *chunks, int64_t id) {
     }
 }
 
-void _upgrade_index_lookup(struct chunk *c){
+void upgrade_index_lookup_1D(struct chunk *c){
     
     if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
         return;
@@ -499,127 +499,71 @@ void _upgrade_index_lookup(struct chunk *c){
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         upgrade_index_overhead.lookup_requests_for_unique++;
-        VERBOSE("_upgrade_index_lookup: non-existing fingerprint");
+        VERBOSE("upgrade_index_lookup_1D: non-existing fingerprint");
     }
 }
 
-void _upgrade_index_lookup_c2c(struct chunk *c) {
-    // c2c: container to container
-    
-    if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
-        return;
+void _upgrade_dedup_buffer(struct chunk *c, struct index_overhead *stats) {
+    if (CHECK_CHUNK(c, CHUNK_DUPLICATE)) return;
 
-    upgrade_index_overhead.index_lookup_requests++;
-
-    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        /* Searching in fingerprint cache */
-        upgrade_index_value_t* v = NULL;
-        if (upgrade_storage_buffer) {
-            v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
-        }
-        if (!v) {
-            v = upgrade_fingerprint_cache_lookup(c);
-        }
-        upgrade_index_overhead.cache_lookup_requests++;
-        if(v){
-            upgrade_index_overhead.cache_hits++;
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-            SET_CHUNK(c, CHUNK_DUPLICATE);
-        }
+    /* Searching in fingerprint cache */
+    upgrade_index_value_t* v = NULL;
+    if (upgrade_storage_buffer) {
+        v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
     }
-
-    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        upgrade_index_overhead.kvstore_lookup_requests++;
-        if (upgrade_fingerprint_cache_prefetch(c->id)) {
-            upgrade_index_overhead.kvstore_hits++;
-            upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
-            assert(v);
-            assert(v->id >= 0);
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-            SET_CHUNK(c, CHUNK_DUPLICATE);
-        }
+    if (!v) {
+        v = upgrade_fingerprint_cache_lookup(c);
     }
-
-    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        upgrade_index_overhead.lookup_requests_for_unique++;
-        VERBOSE("_upgrade_index_lookup_c2c: non-existing fingerprint");
+    stats->cache_lookup_requests++;
+    if(v){
+        stats->cache_hits++;
+        c->id = v->id;
+        memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+        SET_CHUNK(c, CHUNK_DUPLICATE);
     }
 }
 
-void _upgrade_index_lookup_constrained(struct chunk *c) {
-    
+void _upgrade_dedup_kvstore(struct chunk *c, struct index_overhead *stats) {
+    if (CHECK_CHUNK(c, CHUNK_DUPLICATE)) return;
+
+    stats->kvstore_lookup_requests++;
+    if (upgrade_fingerprint_cache_prefetch(c->id)) {
+        stats->kvstore_hits++;
+        upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
+        assert(v);
+        assert(v->id >= 0);
+        c->id = v->id;
+        memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+        SET_CHUNK(c, CHUNK_DUPLICATE);
+    }
+}
+
+void upgrade_index_lookup_2D(struct chunk *c, struct index_overhead *stats, int constrained) {
     if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
         return;
 
-    upgrade_index_overhead.index_lookup_requests++;
+    stats->index_lookup_requests++;
 
-    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        /* Searching in fingerprint cache */
-        upgrade_index_value_t* v = NULL;
-        if (upgrade_storage_buffer) {
-            v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
-        }
-        if (!v) {
-            v = upgrade_fingerprint_cache_lookup(c);
-        }
-        upgrade_index_overhead.cache_lookup_requests++;
-        if(v){
-            upgrade_index_overhead.cache_hits++;
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-            SET_CHUNK(c, CHUNK_DUPLICATE);
-        }
+    _upgrade_dedup_buffer(c, stats);
+
+    if (!constrained) {
+        _upgrade_dedup_kvstore(c, stats);
     }
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        upgrade_index_overhead.lookup_requests_for_unique++;
-        VERBOSE("_upgrade_index_lookup_constrained: non-existing fingerprint");
+        stats->lookup_requests_for_unique++;
+        VERBOSE("upgrade_index_lookup_2D: non-existing fingerprint");
     }
 }
 
 void upgrade_index_lookup_2D_filter(struct chunk *c) {
     // 2D index lookup in filter phase, to count separately
-    if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
-        return;
-
-    index_overhead.index_lookup_requests++;
-
-    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        /* Searching in fingerprint cache */
-        upgrade_index_value_t* v = NULL;
-        if (upgrade_storage_buffer) {
-            v = g_hash_table_lookup(upgrade_storage_buffer, &c->old_fp);
-        }
-        if (!v) {
-            v = upgrade_fingerprint_cache_lookup(c);
-        }
-        index_overhead.cache_lookup_requests++;
-        if(v){
-            index_overhead.cache_hits++;
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-            SET_CHUNK(c, CHUNK_DUPLICATE);
-        }
-    }
-
-    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        index_overhead.kvstore_lookup_requests++;
-        if (upgrade_fingerprint_cache_prefetch(c->id)) {
-            index_overhead.kvstore_hits++;
-            upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
-            assert(v);
-            assert(v->id >= 0);
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-            SET_CHUNK(c, CHUNK_DUPLICATE);
-        }
-    }
-
-    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        index_overhead.lookup_requests_for_unique++;
-        VERBOSE("_upgrade_index_lookup_c2c: non-existing fingerprint");
+    if (destor.upgrade_level == UPGRADE_2D_RELATION) {
+        upgrade_index_lookup_2D(c, &index_overhead, 0);
+    } else if (destor.upgrade_level == UPGRADE_SIMILARITY || destor.upgrade_level == UPGRADE_2D_CONSTRAINED) {
+        upgrade_index_lookup_2D(c, &index_overhead, 1);
+    } else {
+        assert(0);
     }
 }
 
@@ -641,11 +585,11 @@ int upgrade_index_lookup(struct chunk* c) {
     TIMER_BEGIN(1);
 
     if (destor.upgrade_level == UPGRADE_1D_RELATION) {
-        _upgrade_index_lookup(c);
+        upgrade_index_lookup_1D(c);
     } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
-        _upgrade_index_lookup_c2c(c);
+        upgrade_index_lookup_2D(c, &upgrade_index_overhead, 0);
     } else if (destor.upgrade_level == UPGRADE_SIMILARITY || destor.upgrade_level == UPGRADE_2D_CONSTRAINED) {
-        _upgrade_index_lookup_constrained(c);
+        upgrade_index_lookup_2D(c, &upgrade_index_overhead, 1);
     } else {
         assert(0);
     }
