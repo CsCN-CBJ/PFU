@@ -777,11 +777,16 @@ static void* filter_thread_constrained(void* arg) {
                 assert(container_begin == -1);
                 assert(container_num == 0);
             }
-            if (upgrade_storage_buffer) {
-                upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
+            if (CHECK_CHUNK(c, CHUNK_REPROCESS)) {
+                upgrade_fingerprint_cache_insert(c->id, htb);
+            } else {
+                // 保证包含当前container_buffer的container永远不会被LRU刷下去
+                if (upgrade_storage_buffer) {
+                    upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
+                }
+                upgrade_storage_buffer = htb;
+                upgrade_storage_buffer_id = c->id;
             }
-            upgrade_storage_buffer = htb;
-            upgrade_storage_buffer_id = c->id;
             htb = NULL;
             g_hash_table_remove(upgrade_processing, &c->id);
             pthread_mutex_unlock(&upgrade_index_lock.mutex);
