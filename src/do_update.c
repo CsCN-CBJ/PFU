@@ -267,31 +267,36 @@ int compare_container_id(void *a, void *b) {
 	return *(containerid*) a == *(containerid*) b;
 }
 
-static void* read_similarity_recipe_thread(void *arg) {
+typedef struct recipeUnit {
+	int merge_flag; // 0: sub, 1: merge
+	struct fileRecipeMeta *recipe;
+	struct chunkPointer *chunks;
 
+	containerid sub_id;
+	containerid total_num;
+	struct recipeUnit *next;
+} recipeUnit_t;
+
+static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[FEATURE_NUM]) {
 	int i, j, k;
-	fingerprint zero_fp;
-	memset(zero_fp, 0, sizeof(fingerprint));
-	DECLARE_TIME_RECORDER("read_recipe_thread");
-	struct fileRecipeMeta **recipeList = malloc(sizeof(struct fileRecipeMeta *) * jcr.bv->number_of_files);
-	struct chunkPointer **chunkList = malloc(sizeof(struct chunkPointer *) * jcr.bv->number_of_files);
-	// list [ hashtable [ feature -> featureList[ recipe id ] ] ]
-	GHashTable *featureTable[FEATURE_NUM];
-	for (i = 0; i < FEATURE_NUM; i++) {
-		featureTable[i] = g_hash_table_new_full(g_int64_hash, g_int64_equal, free_featureList, NULL);
-	}
-
-	// read all recipes and calculate features
-	TIMER_DECLARE(1);
-	TIMER_BEGIN(1);
-	BEGIN_TIME_RECORD;
+	int size = 0, max_size = 8;
+	recipeUnit_t **list = malloc(sizeof(recipeUnit_t *) * max_size);
 	for (i = 0; i < jcr.bv->number_of_files; i++) {
 		feature features[4] = { LLONG_MAX, LLONG_MAX, LLONG_MAX, LLONG_MAX };
 		struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
 		struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &k);
 		assert(r->chunknum == k);
-		recipeList[i] = r;
-		chunkList[i] = cp;
+
+		recipeUnit_t *unit = malloc(sizeof(recipeUnit_t));
+		unit->merge_flag = 1;
+		unit->recipe = r;
+		unit->chunks = cp;
+		unit->next = NULL;
+		if (size >= max_size) {
+			max_size *= 2;
+			list = realloc(list, sizeof(recipeUnit_t) * max_size);
+		}
+		list[size] = unit;
 
 		// calculate features
 		for (j = 0; j < r->chunknum; j++) {
@@ -313,10 +318,33 @@ static void* read_similarity_recipe_thread(void *arg) {
 				list->max_count *= 2;
 				list->recipeIDList = realloc(list->recipeIDList, sizeof(containerid) * list->max_count);
 			}
-			list->recipeIDList[list->count++] = i;
+			list->recipeIDList[list->count++] = size;
 		}
 		jcr.pre_process_file_num++;
+		size++;
 	}
+	*recipeList = list;
+	return size;
+}
+
+static void* read_similarity_recipe_thread(void *arg) {
+
+	int i, j, k;
+	fingerprint zero_fp;
+	memset(zero_fp, 0, sizeof(fingerprint));
+	DECLARE_TIME_RECORDER("read_recipe_thread");
+	recipeUnit_t **recipeList;
+	// list [ hashtable [ feature -> featureList[ recipe id ] ] ]
+	GHashTable *featureTable[FEATURE_NUM];
+	for (i = 0; i < FEATURE_NUM; i++) {
+		featureTable[i] = g_hash_table_new_full(g_int64_hash, g_int64_equal, free_featureList, NULL);
+	}
+
+	// read all recipes and calculate features
+	TIMER_DECLARE(1);
+	TIMER_BEGIN(1);
+	BEGIN_TIME_RECORD;
+	int recipe_num = process_recipe(&recipeList, featureTable);
 	TIMER_END(1, jcr.read_recipe_time);
 	END_TIME_RECORD;
 
@@ -376,8 +404,9 @@ static void* read_similarity_recipe_thread(void *arg) {
 		// 使用htb标记recipe是否已经发送
 		containerid *recipeID_p = malloc(sizeof(containerid));
 		*recipeID_p = bestRecipeID;
-		struct fileRecipeMeta *r = recipeList[bestRecipeID];
-		struct chunkPointer *cp = chunkList[bestRecipeID];
+		recipeUnit_t *unit = recipeList[bestRecipeID];
+		struct fileRecipeMeta *r = unit->recipe;
+		struct chunkPointer *cp = unit->chunks;
 		WARNING("Send recipe %s", r->filename);
 		g_hash_table_insert(sendedRecipe, recipeID_p, "1");
 
@@ -433,6 +462,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 
 		free_file_recipe_meta(r);
 		free(cp);
+		free(unit);
 	}
 
 	FINISH_TIME_RECORD
@@ -443,7 +473,6 @@ static void* read_similarity_recipe_thread(void *arg) {
 		g_hash_table_destroy(featureTable[i]);
 	}
 	free(recipeList);
-	free(chunkList);
 	return NULL;
 }
 
