@@ -192,7 +192,9 @@ void lru_hashmap_insert(lruHashMap_t *c, void* key, void* value) {
 		lru->size--;
 		
 		assert(g_hash_table_remove(c->map, ((void **)victim)[0]));
-		lru->free_elem(((void **)victim)[1]);
+		if (lru->free_elem) {
+			lru->free_elem(((void **)victim)[1]);
+		}
 		free(victim);
 	}
 

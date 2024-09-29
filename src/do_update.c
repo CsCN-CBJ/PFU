@@ -406,8 +406,11 @@ static void* read_similarity_recipe_thread(void *arg) {
 			*id_p = c->id;
 			for (k = 0; k < FEATURE_NUM; k++) {
 				feature f = CALC_FEATURE(c->id, k);
-				assert(f != featuresInLRU[k]);
-				if (f < featuresInLRU[k]) {
+				if (f == featuresInLRU[k]) {
+					WARNING("Feature conflict %lld %d %lx %lx", c->id, k, f, featuresInLRU[k]);
+					fprintf(stderr, "Feature conflict %lld %d %lx %lx\n", c->id, k, f, featuresInLRU[k]);
+				}
+				if (f <= featuresInLRU[k]) {
 					featuresInLRU[k] = f;
 				} else if (lru_cache_is_full(lru) && CALC_FEATURE(*(containerid *)lru->elem_queue_tail->data, k) == featuresInLRU[k]) {
 					// 如果最小值是最后一个, 需要重新计算特征
@@ -521,6 +524,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		if (cm) {
 			assert(cm->old_id == c->id);
 			conList = malloc(sizeof(struct container *) * cm->container_num);
+			DEBUG("Read new container %ld %ld %d", c->id, cm->new_id, cm->container_num);
 			for (int i = 0; i < cm->container_num; i++) {
 				if (con_buffer && con_buffer->meta.id == cm->new_id + i) {
 					conList[i] = con_buffer;
@@ -594,7 +598,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		TIMER_BEGIN(1);
 
 		free(conList);
-		jcr.read_container_num++;
+		// jcr.read_container_num++;
 			
 		TIMER_END(1, jcr.read_chunk_time);
 		sync_queue_push(upgrade_chunk_queue, c);
