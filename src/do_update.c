@@ -277,50 +277,76 @@ typedef struct recipeUnit {
 	struct recipeUnit *next;
 } recipeUnit_t;
 
+static feature_table_insert(GHashTable *featureTable[FEATURE_NUM], feature features[FEATURE_NUM], containerid recipeID) {
+	for (int i = 0; i < FEATURE_NUM; i++) {
+		struct featureList *list = g_hash_table_lookup(featureTable[i], &features[i]);
+		if (!list) {
+			list = malloc(sizeof(struct featureList));
+			list->count = 0;
+			list->max_count = 1;
+			list->recipeIDList = malloc(sizeof(containerid) * list->max_count);
+			list->feature = features[i];
+			g_hash_table_insert(featureTable[i], &list->feature, list);
+		} else if (list->count >= list->max_count) {
+			list->max_count *= 2;
+			list->recipeIDList = realloc(list->recipeIDList, sizeof(containerid) * list->max_count);
+		}
+		list->recipeIDList[list->count++] = recipeID;
+	}
+}
+
+static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
+	static int file_num = 0;
+	if (file_num >= jcr.bv->number_of_files) {
+		return NULL;
+	}
+
+	int i, j, k;
+	for (i = 0; i < FEATURE_NUM; i++) {
+		features[i] = LLONG_MAX;
+	}
+
+	int chunknum;
+	struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
+	struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &chunknum);
+	assert(r->chunknum == chunknum);
+
+	recipeUnit_t *unit = malloc(sizeof(recipeUnit_t));
+	unit->merge_flag = 1;
+	unit->recipe = r;
+	unit->chunks = cp;
+	unit->next = NULL;
+	unit->sub_id = 0;
+	unit->total_num = 1;
+	
+	// calculate features
+	for (j = 0; j < r->chunknum; j++) {
+		for (k = 0; k < FEATURE_NUM; k++) {
+			features[k] = MIN(features[k], CALC_FEATURE(cp[j].id, k));
+		}
+	}
+
+	file_num++;
+	jcr.pre_process_file_num++;
+	return unit;
+}
+
 static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[FEATURE_NUM]) {
 	int i, j, k;
 	int size = 0, max_size = 8;
 	recipeUnit_t **list = malloc(sizeof(recipeUnit_t *) * max_size);
-	for (i = 0; i < jcr.bv->number_of_files; i++) {
-		feature features[4] = { LLONG_MAX, LLONG_MAX, LLONG_MAX, LLONG_MAX };
-		struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
-		struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &k);
-		assert(r->chunknum == k);
+	
+	while (1) {
+		feature features[FEATURE_NUM];
+		recipeUnit_t *unit = read_one_file(features);
+		if (!unit) break;
 
-		recipeUnit_t *unit = malloc(sizeof(recipeUnit_t));
-		unit->merge_flag = 1;
-		unit->recipe = r;
-		unit->chunks = cp;
-		unit->next = NULL;
 		if (size >= max_size) {
 			max_size *= 2;
 			list = realloc(list, sizeof(recipeUnit_t) * max_size);
 		}
 		list[size] = unit;
-
-		// calculate features
-		for (j = 0; j < r->chunknum; j++) {
-			for (k = 0; k < FEATURE_NUM; k++) {
-				features[k] = MIN(features[k], CALC_FEATURE(cp[j].id, k));
-			}
-		}
-		// insert features into featureTable separately
-		for (k = 0; k < FEATURE_NUM; k++) {
-			struct featureList *list = g_hash_table_lookup(featureTable[k], &features[k]);
-			if (!list) {
-				list = malloc(sizeof(struct featureList));
-				list->count = 0;
-				list->max_count = 1;
-				list->recipeIDList = malloc(sizeof(containerid) * list->max_count);
-				list->feature = features[k];
-				g_hash_table_insert(featureTable[k], &list->feature, list);
-			} else if (list->count >= list->max_count) {
-				list->max_count *= 2;
-				list->recipeIDList = realloc(list->recipeIDList, sizeof(containerid) * list->max_count);
-			}
-			list->recipeIDList[list->count++] = size;
-		}
-		jcr.pre_process_file_num++;
+		feature_table_insert(featureTable, features, size);
 		size++;
 	}
 	*recipeList = list;
@@ -352,7 +378,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 	struct lruCache *lru = new_lru_cache(destor.index_cache_size, free, compare_container_id);
 	feature featuresInLRU[FEATURE_NUM] = { LLONG_MAX, LLONG_MAX, LLONG_MAX, LLONG_MAX };
 	GHashTable *sendedRecipe = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
-	for (i = 0; i < jcr.bv->number_of_files; i++) {
+	for (i = 0; i < recipe_num; i++) {
 		// 选择一个与当前缓存最相似的recipe
 		// 使用新的htb记录recipe的引用次数
 		// containerid recipeID -> int64_t ref
@@ -392,7 +418,7 @@ static void* read_similarity_recipe_thread(void *arg) {
 		g_hash_table_destroy(recipeRef);
 		// 如果没有找到任何相似的recipe, 选择第一个未发送的recipe
 		if (bestRecipeID == -1) {
-			for (containerid id = 0; id < jcr.bv->number_of_files; id++) {
+			for (containerid id = 0; id < recipe_num; id++) {
 				if (!g_hash_table_lookup(sendedRecipe, &id)) {
 					bestRecipeID = id;
 					break;
