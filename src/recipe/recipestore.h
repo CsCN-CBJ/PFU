@@ -98,6 +98,7 @@ struct chunkPointer* read_next_n_chunk_pointers(struct backupVersion* b, int n,
 		int *k);
 containerid* read_next_n_records(struct backupVersion* b, int n, int *k);
 struct fileRecipeMeta* new_file_recipe_meta(char* name);
+struct fileRecipeMeta* copy_file_recipe_meta(struct fileRecipeMeta* r);
 void free_file_recipe_meta(struct fileRecipeMeta* r);
 
 int segment_recipe_check_id(struct segmentRecipe* sr, segmentid *id);

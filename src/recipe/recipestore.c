@@ -490,6 +490,14 @@ struct fileRecipeMeta* new_file_recipe_meta(char* name) {
 	return r;
 }
 
+struct fileRecipeMeta* copy_file_recipe_meta(struct fileRecipeMeta* r) {
+	struct fileRecipeMeta* new = (struct fileRecipeMeta*) malloc(sizeof(struct fileRecipeMeta));
+	new->filename = sdsdup(r->filename);
+	new->chunknum = r->chunknum;
+	new->filesize = r->filesize;
+	return new;
+}
+
 void free_file_recipe_meta(struct fileRecipeMeta* r) {
 	sdsfree(r->filename);
 	free(r);
