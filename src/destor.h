@@ -256,6 +256,9 @@ struct destor {
 
 	/* in number of containers, for DDFS/ChunkStash/Sampled Index. */
 	int index_cache_size;
+	int CDC_max_size;
+	int CDC_min_size;
+	int CDC_exp_size;
 	int index_bloom_filter_size;
 
 	/*

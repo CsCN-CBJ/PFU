@@ -3,6 +3,7 @@
 #include "recipe/recipestore.h"
 #include "storage/containerstore.h"
 #include "utils/lru_cache.h"
+#include "utils/cache.h"
 #include "update.h"
 #include "backup.h"
 #include "index/index.h"
@@ -268,7 +269,6 @@ int compare_container_id(void *a, void *b) {
 }
 
 typedef struct recipeUnit {
-	int merge_flag; // 0: sub, 1: merge
 	struct fileRecipeMeta *recipe;
 	struct chunkPointer *chunks;
 
@@ -312,7 +312,6 @@ static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
 	assert(r->chunknum == chunknum);
 
 	recipeUnit_t *unit = malloc(sizeof(recipeUnit_t));
-	unit->merge_flag = 1;
 	unit->recipe = r;
 	unit->chunks = cp;
 	unit->next = NULL;
@@ -331,26 +330,165 @@ static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
 	return unit;
 }
 
+static int calculate_unique_container(recipeUnit_t *u, GHashTable *htb) {
+	GHashTable *h = htb;
+	if (!h) h = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
+	for (int i = 0; i < u->recipe->chunknum; i++) {
+		containerid id = u->chunks[i].id;
+		if (g_hash_table_lookup(h, &id)) continue;
+		containerid *p = malloc(sizeof(containerid));
+		*p = id;
+		g_hash_table_insert(h, p, "1");
+	}
+	int size = g_hash_table_size(h);
+	if (!htb) g_hash_table_destroy(h);
+	return size;
+}
+
+
 static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[FEATURE_NUM]) {
-	int i, j, k;
-	int size = 0, max_size = 8;
-	recipeUnit_t **list = malloc(sizeof(recipeUnit_t *) * max_size);
+	assert(destor.CDC_max_size >= destor.CDC_min_size); // 确保两个小文件合并后不会超过最大容量
+	DynamicArray *array = dynamic_array_new();
+	GHashTable *cacheTable = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
+	recipeUnit_t *cacheListHead = NULL;
+	recipeUnit_t *cacheListTail = NULL;
+	feature cacheFeatures[FEATURE_NUM];
 	
 	while (1) {
 		feature features[FEATURE_NUM];
-		recipeUnit_t *unit = read_one_file(features);
-		if (!unit) break;
+		recipeUnit_t *u = read_one_file(features);
+		if (!u) break;
+		int unique_num = calculate_unique_container(u, NULL);
 
-		if (size >= max_size) {
-			max_size *= 2;
-			list = realloc(list, sizeof(recipeUnit_t) * max_size);
+		if (unique_num < destor.CDC_min_size) {
+			// merge files
+			if (!cacheListHead) {
+				cacheListHead = u;
+				cacheListTail = u;
+			} else {
+				cacheListTail->next = u;
+				cacheListTail = u;
+			}
+			for (int i = 0; i < FEATURE_NUM; i++) {
+				cacheFeatures[i] = MIN(cacheFeatures[i], features[i]);
+			}
+			
+			int merge_unique_num = calculate_unique_container(u, cacheTable);
+			assert(merge_unique_num <= destor.CDC_max_size);
+			// 如果合并后的文件仍然小于最小容量, 则继续等待合并
+			if (merge_unique_num < destor.CDC_min_size) {
+				WARNING("Merge file %s unique_num: %d, merge_unique_num: %d", cacheListHead->recipe->filename, unique_num, merge_unique_num);
+				continue;
+			}
+			WARNING("Merge end %s unique_num: %d, merge_unique_num: %d", cacheListHead->recipe->filename, unique_num, merge_unique_num);
+
+			// add to recipeList
+			feature_table_insert(featureTable, cacheFeatures, array->size);
+			dynamic_array_add(array, cacheListHead);
+			
+			// reset cache
+			g_hash_table_remove_all(cacheTable);
+			cacheListHead = NULL;
+			cacheListTail = NULL;
+			for (int i = 0; i < FEATURE_NUM; i++) {
+				cacheFeatures[i] = LLONG_MAX;
+			}
+		} else if (unique_num > destor.CDC_max_size) {
+			WARNING("file %s Unique num %d exceed max size %d", u->recipe->filename, unique_num, destor.CDC_max_size);
+			feature_table_insert(featureTable, features, array->size);
+			dynamic_array_add(array, u);
+		} else {
+			WARNING("file %s Unique num %d", u->recipe->filename, unique_num);
+			feature_table_insert(featureTable, features, array->size);
+			dynamic_array_add(array, u);
 		}
-		list[size] = unit;
-		feature_table_insert(featureTable, features, size);
-		size++;
 	}
-	*recipeList = list;
+
+	// add the last cache
+	if (cacheListHead) {
+		feature_table_insert(featureTable, cacheFeatures, array->size);
+		dynamic_array_add(array, cacheListHead);
+	}
+
+	*recipeList = array->data;
+	int size = array->size;
+	free(array);
 	return size;
+}
+
+static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLRU[FEATURE_NUM], struct lruCache *lru) {
+	struct fileRecipeMeta *r = unit->recipe;
+	struct chunkPointer *cp = unit->chunks;
+
+	// 发送recipe
+	struct chunk *c = new_chunk(sdslen(r->filename) + 1);
+	strcpy(c->data, r->filename);
+	SET_CHUNK(c, CHUNK_FILE_START);
+	sync_queue_push(upgrade_recipe_queue, c);
+
+	for (int i = 0; i < r->chunknum; i++) {
+		// 遍历recipe中所有chunk, 对其containerid进行特征计算
+		struct chunk* c = new_chunk(0);
+		memcpy(&c->old_fp, &cp[i].fp, sizeof(fingerprint));
+		c->size = cp[i].size;
+		c->id = cp[i].id;
+		sync_queue_push(upgrade_recipe_queue, c);
+
+		// simulate LRU
+		// 如果找到, 会自动将其移到头部
+		containerid *id_p = lru_cache_lookup(lru, &c->id);
+		if (id_p) continue;
+		// 插入新的containerid
+		// 如果在container hashtable中找到, 实际上对于LRU来说和一个新的container是一样的, 不需要额外处理
+		id_p = malloc(sizeof(containerid));
+		*id_p = c->id;
+		for (int k = 0; k < FEATURE_NUM; k++) {
+			feature f = CALC_FEATURE(c->id, k);
+			if (f == featuresInLRU[k]) {
+				WARNING("Feature conflict %lld %d %lx %lx", c->id, k, f, featuresInLRU[k]);
+				fprintf(stderr, "Feature conflict %lld %d %lx %lx\n", c->id, k, f, featuresInLRU[k]);
+			}
+			if (f <= featuresInLRU[k]) {
+				featuresInLRU[k] = f;
+			} else if (lru_cache_is_full(lru) && CALC_FEATURE(*(containerid *)lru->elem_queue_tail->data, k) == featuresInLRU[k]) {
+				// 如果最小值是最后一个, 需要重新计算特征
+				feature best = f;
+				GList* elem = g_list_first(lru->elem_queue);
+				// 最后一个不参与
+				while (elem && elem->next) {
+					best = MIN(best, CALC_FEATURE(*(containerid *)elem->data, k));
+					elem = g_list_next(elem);
+				}
+				featuresInLRU[k] = best;
+			}
+		}
+		lru_cache_insert(lru, id_p, NULL, NULL);
+	}
+
+	c = new_chunk(0);
+	SET_CHUNK(c, CHUNK_FILE_END);
+	sync_queue_push(upgrade_recipe_queue, c);
+
+	free_file_recipe_meta(r);
+	free(cp);
+}
+
+void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLRU[FEATURE_NUM], struct lruCache *lru) {
+	if (unit->next) {
+		WARNING("Send merge recipe start");
+		while (unit) {
+			WARNING("Send recipe %s", unit->recipe->filename);
+			send_one_recipe(queue, unit, featuresInLRU, lru);
+			recipeUnit_t *temp = unit;
+			unit = unit->next;
+			free(temp);
+		}
+		WARNING("Send merge recipe end");
+	} else {
+		WARNING("Send single recipe %s", unit->recipe->filename);
+		send_one_recipe(queue, unit, featuresInLRU, lru);
+		free(unit);
+	}
 }
 
 static void* read_similarity_recipe_thread(void *arg) {
@@ -430,65 +568,11 @@ static void* read_similarity_recipe_thread(void *arg) {
 		// 使用htb标记recipe是否已经发送
 		containerid *recipeID_p = malloc(sizeof(containerid));
 		*recipeID_p = bestRecipeID;
-		recipeUnit_t *unit = recipeList[bestRecipeID];
-		struct fileRecipeMeta *r = unit->recipe;
-		struct chunkPointer *cp = unit->chunks;
-		WARNING("Send recipe %s", r->filename);
 		g_hash_table_insert(sendedRecipe, recipeID_p, "1");
 
 		// 发送recipe
-		struct chunk *c = new_chunk(sdslen(r->filename) + 1);
-		strcpy(c->data, r->filename);
-		SET_CHUNK(c, CHUNK_FILE_START);
-		sync_queue_push(upgrade_recipe_queue, c);
-
-		for (j = 0; j < r->chunknum; j++) {
-			// 遍历recipe中所有chunk, 对其containerid进行特征计算
-			struct chunk* c = new_chunk(0);
-			memcpy(&c->old_fp, &cp[j].fp, sizeof(fingerprint));
-			assert(!memcmp(c->old_fp + 20, zero_fp, 12));
-			c->size = cp[j].size;
-			c->id = cp[j].id;
-			sync_queue_push(upgrade_recipe_queue, c);
-
-			// simulate LRU
-			// 如果找到, 会自动将其移到头部
-			containerid *id_p = lru_cache_lookup(lru, &c->id);
-			if (id_p) continue;
-			// 插入新的containerid
-			// 如果在container hashtable中找到, 实际上对于LRU来说和一个新的container是一样的, 不需要额外处理
-			id_p = malloc(sizeof(containerid));
-			*id_p = c->id;
-			for (k = 0; k < FEATURE_NUM; k++) {
-				feature f = CALC_FEATURE(c->id, k);
-				if (f == featuresInLRU[k]) {
-					WARNING("Feature conflict %lld %d %lx %lx", c->id, k, f, featuresInLRU[k]);
-					fprintf(stderr, "Feature conflict %lld %d %lx %lx\n", c->id, k, f, featuresInLRU[k]);
-				}
-				if (f <= featuresInLRU[k]) {
-					featuresInLRU[k] = f;
-				} else if (lru_cache_is_full(lru) && CALC_FEATURE(*(containerid *)lru->elem_queue_tail->data, k) == featuresInLRU[k]) {
-					// 如果最小值是最后一个, 需要重新计算特征
-					feature best = f;
-					GList* elem = g_list_first(lru->elem_queue);
-					// 最后一个不参与
-					while (elem && elem->next) {
-						best = MIN(best, CALC_FEATURE(*(containerid *)elem->data, k));
-						elem = g_list_next(elem);
-					}
-					featuresInLRU[k] = best;
-				}
-			}
-			lru_cache_insert(lru, id_p, NULL, NULL);
-		}
-
-		c = new_chunk(0);
-		SET_CHUNK(c, CHUNK_FILE_END);
-		sync_queue_push(upgrade_recipe_queue, c);
-
-		free_file_recipe_meta(r);
-		free(cp);
-		free(unit);
+		recipeUnit_t *unit = recipeList[bestRecipeID];
+		send_recipe_unit(upgrade_recipe_queue, unit, featuresInLRU, lru);
 	}
 
 	FINISH_TIME_RECORD
