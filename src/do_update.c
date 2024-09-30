@@ -274,6 +274,8 @@ typedef struct recipeUnit {
 
 	containerid sub_id;
 	containerid total_num;
+	containerid chunk_num;
+
 	struct recipeUnit *next;
 } recipeUnit_t;
 
@@ -345,6 +347,65 @@ static int calculate_unique_container(recipeUnit_t *u, GHashTable *htb) {
 	return size;
 }
 
+static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM], recipeUnit_t *u) {
+	int currentSubID = 0, startArrayIndex = array->size, startChunkIndex = 0;
+	GHashTable *cdcTable = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
+	for (int i = 0; i < u->recipe->chunknum;) {
+		g_hash_table_remove_all(cdcTable);
+		// 创建新的recipeUnit
+		feature subFeatures[FEATURE_NUM];
+		for (int k = 0; k < FEATURE_NUM; k++) {
+			subFeatures[k] = LLONG_MAX;
+		}
+		recipeUnit_t *sub = malloc(sizeof(recipeUnit_t));
+		sub->recipe = copy_file_recipe_meta(u->recipe);
+		sub->next = NULL;
+		sub->sub_id = currentSubID++;
+		startChunkIndex = i;
+
+		// 开始填充当前子块
+		for (; i < u->recipe->chunknum; i++) {
+			if (g_hash_table_size(cdcTable) >= destor.CDC_max_size) break;
+
+			// 插入当前chunk
+			containerid id = u->chunks[i].id;
+			if (g_hash_table_lookup(cdcTable, &id)) continue;
+			containerid *p = malloc(sizeof(containerid));
+			*p = id;
+			g_hash_table_insert(cdcTable, p, "1");
+			// 计算feature
+			for (int k = 0; k < FEATURE_NUM; k++) {
+				subFeatures[k] = MIN(subFeatures[k], CALC_FEATURE(id, k));
+			}
+			
+			// 跳过min个container
+			if (g_hash_table_size(cdcTable) < destor.CDC_min_size) continue;
+
+			// 进行CDC
+			if (id % destor.CDC_exp_size == 0) break;
+		}
+
+		// 继续插入重复chunk
+		for (; i < u->recipe->chunknum; i++) {
+			if (!g_hash_table_lookup(cdcTable, &u->chunks[i].id)) break;
+		}
+
+		// 插入到recipeList
+		sub->chunk_num = i - startChunkIndex;
+		sub->chunks = malloc(sizeof(struct chunkPointer) * sub->chunk_num);
+		memcpy(sub->chunks, u->chunks + startChunkIndex, sizeof(struct chunkPointer) * sub->chunk_num);
+
+		feature_table_insert(featureTable, subFeatures, array->size);
+		dynamic_array_add(array, sub);
+		WARNING("Sub recipe %d, chunk num %d %s", sub->sub_id, sub->chunk_num, u->recipe->filename);
+	}
+	int total = 0;
+	for (int i = startArrayIndex; i < array->size; i++) {
+		((recipeUnit_t *)array->data[i])->total_num = currentSubID;
+		total += ((recipeUnit_t *)array->data[i])->chunk_num;
+	}
+	assert(total == u->recipe->chunknum);
+}
 
 static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[FEATURE_NUM]) {
 	assert(destor.CDC_max_size >= destor.CDC_min_size); // 确保两个小文件合并后不会超过最大容量
@@ -395,8 +456,10 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 			}
 		} else if (unique_num > destor.CDC_max_size) {
 			WARNING("file %s Unique num %d exceed max size %d", u->recipe->filename, unique_num, destor.CDC_max_size);
-			feature_table_insert(featureTable, features, array->size);
-			dynamic_array_add(array, u);
+			CDC_recipe(array, featureTable, u);
+			free_file_recipe_meta(u->recipe);
+			free(u->chunks);
+			free(u);
 		} else {
 			WARNING("file %s Unique num %d", u->recipe->filename, unique_num);
 			feature_table_insert(featureTable, features, array->size);
@@ -426,7 +489,7 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 	SET_CHUNK(c, CHUNK_FILE_START);
 	sync_queue_push(upgrade_recipe_queue, c);
 
-	for (int i = 0; i < r->chunknum; i++) {
+	for (int i = 0; i < unit->chunk_num; i++) {
 		// 遍历recipe中所有chunk, 对其containerid进行特征计算
 		struct chunk* c = new_chunk(0);
 		memcpy(&c->old_fp, &cp[i].fp, sizeof(fingerprint));
@@ -477,7 +540,7 @@ void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLR
 	if (unit->next) {
 		WARNING("Send merge recipe start");
 		while (unit) {
-			WARNING("Send recipe %s", unit->recipe->filename);
+			WARNING("Send %s %ld/%ld", unit->recipe->filename, unit->sub_id + 1, unit->total_num);
 			send_one_recipe(queue, unit, featuresInLRU, lru);
 			recipeUnit_t *temp = unit;
 			unit = unit->next;
@@ -485,7 +548,7 @@ void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLR
 		}
 		WARNING("Send merge recipe end");
 	} else {
-		WARNING("Send single recipe %s", unit->recipe->filename);
+		WARNING("Send %s %ld/%ld", unit->recipe->filename, unit->sub_id + 1, unit->total_num);
 		send_one_recipe(queue, unit, featuresInLRU, lru);
 		free(unit);
 	}
