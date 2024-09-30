@@ -299,6 +299,7 @@ struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 
 	if(c->meta.id != id){
 		WARNING("expect %lld, but read %lld", id, c->meta.id);
+		fprintf(stderr, "expect %lld, but read %lld", id, c->meta.id);
 		assert(c->meta.id == id);
 	}
 
@@ -355,7 +356,7 @@ static struct containerMeta* container_meta_duplicate(struct container *c) {
 
 struct containerMeta* retrieve_container_meta_by_id(containerid id) {
 	FILE *fp = job == DESTOR_UPDATE ? new_fp : old_fp;
-	pthread_mutex_t *mutex = &old_mutex;
+	pthread_mutex_t *mutex = fp == new_fp ? &new_mutex : &old_mutex;
 	struct containerMeta* cm = NULL;
 
 	/* First, we find it in the buffer */
@@ -391,6 +392,7 @@ struct containerMeta* retrieve_container_meta_by_id(containerid id) {
 
 	if(cm->id != id){
 		WARNING("expect %lld, but read %lld", id, cm->id);
+		fprintf(stderr, "expect %lld, but read %lld", id, cm->id);
 		assert(cm->id == id);
 	}
 
