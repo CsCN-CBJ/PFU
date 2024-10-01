@@ -16,10 +16,10 @@ int yesnotoi(char *s) {
 		return -1;
 }
 
-void load_config_from_string(sds config) {
+void load_config_from_string(sds config, const char *sep) {
 	char *err = NULL;
 	int linenum = 0, totlines, i;
-	sds *lines = sdssplitlen(config, strlen(config), "\n", 1, &totlines);
+	sds *lines = sdssplitlen(config, strlen(config), sep, 1, &totlines);
 
 	for (i = 0; i < totlines; i++) {
 		sds *argv;
@@ -338,6 +338,6 @@ void load_config() {
 		config = sdscat(config, buf);
 
 	fclose(fp);
-	load_config_from_string(config);
+	load_config_from_string(config, "\n");
 	sdsfree(config);
 }
