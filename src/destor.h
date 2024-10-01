@@ -38,6 +38,7 @@
 #define TIMER_END(n,t) gettimeofday(&e##n, NULL); \
     (t)+=e##n.tv_usec-b##n.tv_usec+1000000*(e##n.tv_sec-b##n.tv_sec)
 
+/*
 #define PRINT_TIME_RECORD(tv) if(f_recorder){fprintf(f_recorder, "%ld.%06ld\n", (long)tv.tv_sec, (long)tv.tv_usec);}
 #define TIMER_DIFF(e, b) (long long)(e.tv_sec-b.tv_sec) * 1000000 + (e.tv_usec-b.tv_usec)
 #define TIME_WAIT 100000 // 0.1s
@@ -54,6 +55,7 @@
 			}
 #define END_TIME_RECORD gettimeofday(&endTime, NULL);
 #define FINISH_TIME_RECORD PRINT_TIME_RECORD(endTime);if(f_recorder){fclose(f_recorder);}
+*/
 
 #define DESTOR_CONFIGLINE_MAX 1024
 

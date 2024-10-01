@@ -20,14 +20,11 @@ static void* read_recipe_thread(void *arg) {
 	int i, j, k;
 	fingerprint zero_fp;
 	memset(zero_fp, 0, sizeof(fingerprint));
-	DECLARE_TIME_RECORDER("read_recipe_thread");
 	for (i = 0; i < jcr.bv->number_of_files; i++) {
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
 
-		BEGIN_TIME_RECORD;
 		struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
-		END_TIME_RECORD;
 		NOTICE("Send recipe %s", r->filename);
 
 		struct chunk *c = new_chunk(sdslen(r->filename) + 1);
@@ -42,9 +39,7 @@ static void* read_recipe_thread(void *arg) {
 			TIMER_DECLARE(1);
 			TIMER_BEGIN(1);
 
-			BEGIN_TIME_RECORD
 			struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, 1, &k);
-			END_TIME_RECORD
 
 			struct chunk* c = new_chunk(0);
 			memcpy(&c->old_fp, &cp->fp, sizeof(fingerprint));
@@ -65,7 +60,6 @@ static void* read_recipe_thread(void *arg) {
 		free_file_recipe_meta(r);
 	}
 
-	FINISH_TIME_RECORD
 	sync_queue_term(upgrade_recipe_queue);
 	return NULL;
 }
@@ -572,7 +566,6 @@ static void* read_similarity_recipe_thread(void *arg) {
 	int i, j, k;
 	fingerprint zero_fp;
 	memset(zero_fp, 0, sizeof(fingerprint));
-	DECLARE_TIME_RECORDER("read_recipe_thread");
 	recipeUnit_t **recipeList;
 	// list [ hashtable [ feature -> featureList[ recipe id ] ] ]
 	GHashTable *featureTable[FEATURE_NUM];
@@ -583,10 +576,8 @@ static void* read_similarity_recipe_thread(void *arg) {
 	// read all recipes and calculate features
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
-	BEGIN_TIME_RECORD;
 	int recipe_num = process_recipe(&recipeList, featureTable);
 	TIMER_END(1, jcr.read_recipe_time);
-	END_TIME_RECORD;
 
 	// send recipes
 	struct lruCache *lru = new_lru_cache(destor.index_cache_size, free, compare_container_id);
@@ -651,7 +642,6 @@ static void* read_similarity_recipe_thread(void *arg) {
 		send_recipe_unit(upgrade_recipe_queue, unit, featuresInLRU, lru);
 	}
 
-	FINISH_TIME_RECORD
 	sync_queue_term(upgrade_recipe_queue);
 	free_lru_cache(lru);
 	g_hash_table_destroy(sendedRecipe);
@@ -668,7 +658,6 @@ static void* lru_get_chunk_thread(void *arg) {
 	cache = new_lru_cache(destor.restore_cache[1], free_container,
 			lookup_fingerprint_in_container);
 
-	DECLARE_TIME_RECORDER("lru_get_chunk_thread");
 	struct chunk* c;
 	while ((c = sync_queue_pop(pre_dedup_queue))) {
 
@@ -683,9 +672,7 @@ static void* lru_get_chunk_thread(void *arg) {
 		// if (destor.simulation_level >= SIMULATION_RESTORE) {
 		struct container *con = lru_cache_lookup(cache, &c->old_fp);
 		if (!con) {
-			BEGIN_TIME_RECORD;
 			con = retrieve_container_by_id(c->id);
-			END_TIME_RECORD;
 			lru_cache_insert(cache, con, NULL, NULL);
 			jcr.read_container_num++;
 		}
@@ -702,7 +689,6 @@ static void* lru_get_chunk_thread(void *arg) {
 		// jcr.chunk_num++;
 		free_chunk(c);
 	}
-	FINISH_TIME_RECORD;
 
 	sync_queue_term(upgrade_chunk_queue);
 
@@ -712,7 +698,6 @@ static void* lru_get_chunk_thread(void *arg) {
 }
 
 static void* lru_get_chunk_thread_2D(void *arg) {
-	DECLARE_TIME_RECORDER("lru_get_chunk_thread");
 	struct chunk *c, *ck; // c: get from queue, ck: temp chunk
 	struct container *con_buffer = NULL; // 防止两个相邻的container读两次
 	while ((c = sync_queue_pop(pre_dedup_queue))) {
@@ -728,7 +713,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		// 已经发送过的container不再发送
 		assert(c->id >= 0);
 		DEBUG("lru_get_chunk_thread_2D %ld", c->id);
-		BEGIN_TIME_RECORD;
 		pthread_mutex_lock(&upgrade_index_lock.mutex);
 		struct containerMap *cm = g_hash_table_lookup(upgrade_container, &c->id);
 		pthread_mutex_unlock(&upgrade_index_lock.mutex);
@@ -760,7 +744,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 			container_num = 1;
 			is_new = FALSE;
 		}
-		END_TIME_RECORD
 
 		// send container
 		ck = new_chunk(0);
@@ -820,7 +803,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 
 	}
 
-	FINISH_TIME_RECORD
 	if (con_buffer) {
 		free_container(con_buffer);
 	}
@@ -830,7 +812,6 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 
 
 static void* pre_dedup_thread(void *arg) {
-	DECLARE_TIME_RECORDER("pre_dedup_thread");
 	while (1) {
 		struct chunk* c = sync_queue_pop(upgrade_recipe_queue);
 
@@ -849,7 +830,6 @@ static void* pre_dedup_thread(void *arg) {
 		// while (upgrade_index_lookup(c) == 0) { // 目前永远是1, 所以不用管cond
 		// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
 		// }
-		BEGIN_TIME_RECORD
 		if (destor.upgrade_level == UPGRADE_2D_RELATION
 			|| destor.upgrade_level == UPGRADE_2D_CONSTRAINED
 			|| destor.upgrade_level == UPGRADE_SIMILARITY) {
@@ -875,17 +855,14 @@ static void* pre_dedup_thread(void *arg) {
 			// Not Implemented
 			assert(0);
 		}
-		END_TIME_RECORD
 		pthread_mutex_unlock(&upgrade_index_lock.mutex);
 		sync_queue_push(pre_dedup_queue, c);
 	}
-	FINISH_TIME_RECORD
 	sync_queue_term(pre_dedup_queue);
 	return NULL;
 }
 
 static void* sha256_thread(void* arg) {
-	DECLARE_TIME_RECORDER("sha256_thread");
 	// char code[41];
 	// 只有计算在container内的chunk的hash, 如果不是2D, 则始终为TRUE
 	int in_container = TRUE;
@@ -908,8 +885,6 @@ static void* sha256_thread(void* arg) {
 			continue;
 		}
 
-		BEGIN_TIME_RECORD
-
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
 		jcr.hash_num++;
@@ -930,7 +905,6 @@ static void* sha256_thread(void* arg) {
 		}
 		TIMER_END(1, jcr.hash_time);
 
-		END_TIME_RECORD
 
 		// hash2code(c->fp, code);
 		// code[40] = 0;
@@ -938,7 +912,6 @@ static void* sha256_thread(void* arg) {
 
 		sync_queue_push(hash_queue, c);
 	}
-	FINISH_TIME_RECORD
 	return NULL;
 }
 

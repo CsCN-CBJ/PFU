@@ -14,7 +14,6 @@ remake
 [[ "$*" =~ "-bkp" ]] && bkp=1 || bkp=0
 
 set -x
-rm -rf ~/destor/log/time*
 if [[ $bkp == 1 ]]; then
 
     resetAll
@@ -24,7 +23,6 @@ if [[ $bkp == 1 ]]; then
 
     set -x
     # basic test
-    mkdir ~/destor/log/time
     mkdir -p ${DST_DIR}${RESTORE_ID}
     ./destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
     mkdir -p ${WORKING_DIR}_bak
@@ -34,7 +32,6 @@ if [[ $bkp == 1 ]]; then
     if [ $chk -eq 1 ]; then
         ./destor -r0 ${DST_DIR}${RESTORE_ID} "${CONFIG}"
     fi
-    mv ~/destor/log/time ~/destor/log/time${RESTORE_ID}
 
 fi
 
@@ -49,7 +46,6 @@ function update() {
     cp ${WORKING_DIR}_bak/destor.stat ${WORKING_DIR}
     cp ${WORKING_DIR}_bak/backupversion.count ${WORKING_DIR}/recipes
     
-    mkdir -p ~/destor/log/time
     mkdir -p ${DST_DIR}${RESTORE_ID}
     ./destor -u0 ${SRC_DIR} -i"$1" "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
 
@@ -57,7 +53,6 @@ function update() {
         # rm ${WORKING_DIR}/container.pool
         ./destor -n1 ${DST_DIR}${RESTORE_ID} "${CONFIG}"
     fi
-    mv ~/destor/log/time ~/destor/log/time${RESTORE_ID}
 
     let ++RESTORE_ID
 }

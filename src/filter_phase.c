@@ -107,8 +107,6 @@ static void* filter_thread(void *arg) {
         bv = jcr.bv;
     }
 
-    DECLARE_TIME_RECORDER("filter_thread");
-
     while (1) {
         struct chunk* c = sync_queue_pop(rewrite_queue);
 
@@ -133,8 +131,6 @@ static void* filter_thread(void *arg) {
             c = sync_queue_pop(rewrite_queue);
         }
         free_chunk(c);
-
-        BEGIN_TIME_RECORD
 
         /* For self-references in a segment.
          * If we find an early copy of the chunk in this segment has been rewritten,
@@ -392,7 +388,6 @@ static void* filter_thread(void *arg) {
         g_hash_table_destroy(recently_rewritten_chunks);
         g_hash_table_destroy(recently_unique_chunks);
 
-        END_TIME_RECORD
     }
 
     if (storage_buffer.container_buffer
@@ -419,7 +414,6 @@ static void* filter_thread(void *arg) {
         write_container_async(storage_buffer.container_buffer);
     }
 
-	FINISH_TIME_RECORD
     /* All files done */
     jcr.status = JCR_STATUS_DONE;
     return NULL;
@@ -562,8 +556,6 @@ static void* filter_thread_2D(void* arg) {
 	GSequence *file_chunks = NULL;
 	int in_container = FALSE;
 
-    DECLARE_TIME_RECORDER("filter_thread");
-
 	while (1) {
 		struct chunk* c = sync_queue_pop(hash_queue);
 
@@ -574,8 +566,6 @@ static void* filter_thread_2D(void* arg) {
 
         TIMER_DECLARE(1);
         TIMER_BEGIN(1);
-
-        BEGIN_TIME_RECORD
 
 		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
 			assert(r == NULL);
@@ -670,7 +660,6 @@ static void* filter_thread_2D(void* arg) {
             
 			g_sequence_append(file_chunks, c);
 		}
-        END_TIME_RECORD
         TIMER_END(1, jcr.filter_time);
 	}
     if (storage_buffer.container_buffer
@@ -678,7 +667,6 @@ static void* filter_thread_2D(void* arg) {
         flush_container();
     }
     /* All files done */
-    FINISH_TIME_RECORD
     free(kv);
     jcr.status = JCR_STATUS_DONE;
     return NULL;
@@ -737,8 +725,6 @@ static void* filter_thread_constrained(void* arg) {
     GHashTable *recipe_cache_htb = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, NULL);
     recipeCache_t *recipe_cache_finished = NULL;
 
-    DECLARE_TIME_RECORDER("filter_thread");
-
 	while (1) {
 		struct chunk* c = sync_queue_pop(hash_queue);
 
@@ -749,8 +735,6 @@ static void* filter_thread_constrained(void* arg) {
 
         TIMER_DECLARE(1);
         TIMER_BEGIN(1);
-
-        BEGIN_TIME_RECORD
 
 		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
             assert(!in_container);
@@ -925,7 +909,6 @@ static void* filter_thread_constrained(void* arg) {
             
 			g_sequence_append(file_chunks, c);
 		}
-        END_TIME_RECORD
         TIMER_END(1, jcr.filter_time);
 	}
     if (storage_buffer.container_buffer
@@ -935,7 +918,6 @@ static void* filter_thread_constrained(void* arg) {
     assert(g_hash_table_size(recipe_cache_htb) == 0);
     g_hash_table_destroy(recipe_cache_htb);
     /* All files done */
-    FINISH_TIME_RECORD
     free(kv);
     jcr.status = JCR_STATUS_DONE;
     return NULL;
