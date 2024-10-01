@@ -489,12 +489,16 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 }
 
 static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLRU[FEATURE_NUM], struct lruCache *lru) {
+	assert(destor.upgrade_level == UPGRADE_SIMILARITY);
+	
 	struct fileRecipeMeta *r = unit->recipe;
 	struct chunkPointer *cp = unit->chunks;
 
 	// 发送recipe
-	struct chunk *c = new_chunk(sdslen(r->filename) + 1);
-	strcpy(c->data, r->filename);
+	struct chunk *c = new_chunk(2 * sizeof(containerid) + sdslen(r->filename) + 1);
+	((containerid *)c->data)[0] = unit->sub_id;
+	((containerid *)c->data)[1] = unit->total_num;
+	strcpy(c->data + 2 * sizeof(containerid), r->filename);
 	SET_CHUNK(c, CHUNK_FILE_START);
 	sync_queue_push(upgrade_recipe_queue, c);
 

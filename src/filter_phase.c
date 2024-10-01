@@ -704,9 +704,23 @@ static void append_chunk_sequence(struct backupVersion* bv, struct fileRecipeMet
         jcr.chunk_num++;
         jcr.data_size += c->size;
     }
-    append_file_recipe_meta(bv, r);
-    free_file_recipe_meta(r);
 }
+
+typedef struct {
+    struct fileRecipeMeta *recipe;
+    GSequence **file_chunks_list;
+    int count;
+    int total;
+} recipeCache_t;
+
+recipeCache_t *init_recipe_cache(int total) {
+    recipeCache_t *rc = malloc(sizeof(recipeCache_t));
+    rc->file_chunks_list = calloc(total, sizeof(GSequence *));
+    rc->count = 0;
+    rc->total = total;
+    return rc;
+}
+
 
 static void* filter_thread_constrained(void* arg) {
     struct fileRecipeMeta* r = NULL;
@@ -719,6 +733,9 @@ static void* filter_thread_constrained(void* arg) {
 	int in_container = FALSE;
     containerid container_begin = -1;
     int16_t container_num = 0;
+
+    GHashTable *recipe_cache_htb = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, NULL);
+    recipeCache_t *recipe_cache_finished = NULL;
 
     DECLARE_TIME_RECORDER("filter_thread");
 
@@ -737,21 +754,90 @@ static void* filter_thread_constrained(void* arg) {
 
 		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
             assert(!in_container);
-			assert(r == NULL);
-			r = new_file_recipe_meta(c->data); // filename
 			file_chunks = g_sequence_new(free_chunk);
+
+            switch (destor.upgrade_level)
+            {
+            case UPGRADE_2D_CONSTRAINED:
+			    assert(r == NULL);
+                r = new_file_recipe_meta(c->data); // filename
+                break;
+            case UPGRADE_SIMILARITY: {
+                containerid sub_id = ((containerid *)c->data)[0];
+                containerid total_num = ((containerid *)c->data)[1];
+                unsigned char *filename = c->data + 2 * sizeof(containerid);
+                recipeCache_t *rc = g_hash_table_lookup(recipe_cache_htb, filename);
+                if (!rc) {
+                    rc = init_recipe_cache(total_num);
+                    rc->recipe = new_file_recipe_meta(filename);
+                    g_hash_table_insert(recipe_cache_htb, rc->recipe->filename, rc);
+                }
+                assert(rc->count < rc->total);
+                assert(sub_id < rc->total);
+                assert(rc->file_chunks_list[sub_id] == NULL);
+
+                rc->file_chunks_list[sub_id] = file_chunks;
+                rc->count++;
+                recipe_cache_finished = rc->count == rc->total ? rc : NULL;
+                break;
+            }
+            default:
+                assert(0);
+                break;
+            }
+
 			free_chunk(c);
 		} else if (CHECK_CHUNK(c, CHUNK_FILE_END)) {
             assert(!in_container);
 			free_chunk(c);
 
-			append_segment_flag(bv, CHUNK_SEGMENT_START, g_sequence_get_length(file_chunks));
-            append_chunk_sequence(bv, r, file_chunks);
-            r = NULL;
-            append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
+            switch (destor.upgrade_level)
+            {
+            case UPGRADE_2D_CONSTRAINED:
+                append_segment_flag(bv, CHUNK_SEGMENT_START, g_sequence_get_length(file_chunks));
+                append_chunk_sequence(bv, r, file_chunks);
+                g_sequence_free(file_chunks);
+                append_file_recipe_meta(bv, r);
+                free_file_recipe_meta(r);
+                r = NULL;
+                append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
+                jcr.file_num++;
+                break;
+            case UPGRADE_SIMILARITY:
+                if (!recipe_cache_finished) break;
 
-			jcr.file_num++;
-            g_sequence_free(file_chunks);
+                // calculate total chunk num
+                int totalSize = 0;
+                for (int i = 0; i < recipe_cache_finished->count; i++) {
+                    file_chunks = recipe_cache_finished->file_chunks_list[i];
+                    totalSize += g_sequence_get_length(file_chunks);
+                }
+                append_segment_flag(bv, CHUNK_SEGMENT_START, totalSize);
+
+                // append all chunks to fileRecipeMeta
+                r = recipe_cache_finished->recipe;
+                for (int i = 0; i < recipe_cache_finished->count; i++) {
+                    file_chunks = recipe_cache_finished->file_chunks_list[i];
+                    append_chunk_sequence(bv, r, file_chunks);
+                    g_sequence_free(file_chunks);
+                }
+
+                // append fileRecipeMeta to backupVersion
+                append_file_recipe_meta(bv, r);
+                append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
+                jcr.file_num++;
+
+                // free recipe cache
+                g_hash_table_remove(recipe_cache_htb, r->filename);
+                free_file_recipe_meta(r);
+                free(recipe_cache_finished->file_chunks_list);
+                free(recipe_cache_finished);
+                break;
+            default:
+                assert(0);
+                break;
+            }
+            
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
 			assert(!in_container);
 			in_container = TRUE;
@@ -846,6 +932,8 @@ static void* filter_thread_constrained(void* arg) {
     		&& !container_empty(storage_buffer.container_buffer)){
         flush_container();
     }
+    assert(g_hash_table_size(recipe_cache_htb) == 0);
+    g_hash_table_destroy(recipe_cache_htb);
     /* All files done */
     FINISH_TIME_RECORD
     free(kv);
