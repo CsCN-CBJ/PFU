@@ -58,12 +58,18 @@ void init_container_store() {
 		containerfile = sdscat(containerfile, "_new");
 	}
 
-	if ((old_fp = fopen(containerfile, "r+"))) {
+	if (job == DESTOR_UPDATE) {
+		// 确保不修改原始文件
+		old_fp = fopen(containerfile, "r");
+		assert(old_fp);
 		fread(&container_count, 8, 1, old_fp);
-	} else if (!(old_fp = fopen(containerfile, "w+"))) {
-		perror(
-				"Can not create container.pool for read and write because");
-		exit(1);
+	} else {
+		if ((old_fp = fopen(containerfile, "r+"))) {
+			fread(&container_count, 8, 1, old_fp);
+		} else if (!(old_fp = fopen(containerfile, "w+"))) {
+			perror("Can not create container.pool for read and write because");
+			exit(1);
+		}
 	}
 
 	if (job == DESTOR_UPDATE) {
