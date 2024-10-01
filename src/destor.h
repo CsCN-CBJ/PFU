@@ -71,6 +71,7 @@ int job;
 #define UPGRADE_2D_RELATION 2
 #define UPGRADE_2D_CONSTRAINED 3
 #define UPGRADE_SIMILARITY 4
+#define UPGRADE_SIMILARITY_PLUS 5
 
 /* Log levels */
 #define DESTOR_DEBUG 0
@@ -233,10 +234,13 @@ CHECK_CHUNK(c, CHUNK_CONTAINER_END)\
 
 struct destor {
 	sds working_directory;
-	int upgrade_level;
 	int simulation_level;
     int trace_format;
 	int verbosity;
+
+	// upgrade flags
+	int upgrade_level;
+	int upgrade_do_split_merge;
 
 	int chunk_algorithm;
 	int chunk_max_size;

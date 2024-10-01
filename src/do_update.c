@@ -319,6 +319,7 @@ static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
 	unit->next = NULL;
 	unit->sub_id = 0;
 	unit->total_num = 1;
+	unit->chunk_num = r->chunknum;
 	
 	// calculate features
 	for (j = 0; j < r->chunknum; j++) {
@@ -419,6 +420,14 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 		feature features[FEATURE_NUM];
 		recipeUnit_t *u = read_one_file(features);
 		if (!u) break;
+
+		// 基础版不进行切分合并
+		if (!destor.upgrade_do_split_merge) {
+			feature_table_insert(featureTable, features, array->size);
+			dynamic_array_add(array, u);
+			continue;
+		}
+
 		int unique_num = calculate_unique_container(u, NULL);
 
 		if (unique_num < destor.CDC_min_size) {
@@ -929,7 +938,18 @@ static void* sha256_thread(void* arg) {
 	return NULL;
 }
 
+static void pre_process_level() {
+	if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS) {
+		destor.upgrade_level = UPGRADE_SIMILARITY;
+		destor.upgrade_do_split_merge = TRUE;
+	} else {
+		destor.upgrade_do_split_merge = FALSE;
+	}
+}
+
 void do_update(int revision, char *path) {
+
+	pre_process_level();
 
 	init_recipe_store();
 	init_container_store();

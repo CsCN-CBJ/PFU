@@ -684,6 +684,30 @@ static void* filter_thread_2D(void* arg) {
     return NULL;
 }
 
+static void append_chunk_sequence(struct backupVersion* bv, struct fileRecipeMeta* r, GSequence *file_chunks) {
+    // iter seq
+    struct chunk *c;
+    GSequenceIter *iter = g_sequence_get_begin_iter(file_chunks);
+    GSequenceIter *end = g_sequence_get_end_iter(file_chunks);
+    for (; iter != end; iter = g_sequence_iter_next(iter)) {
+        c = g_sequence_get(iter);
+        assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+        struct chunkPointer cp;
+        cp.id = c->id;
+        assert(cp.id>=0);
+        memcpy(&cp.fp, &c->fp, sizeof(fingerprint));
+        cp.size = c->size;
+        append_n_chunk_pointers(bv, &cp ,1);
+        r->chunknum++;
+        r->filesize += c->size;
+
+        jcr.chunk_num++;
+        jcr.data_size += c->size;
+    }
+    append_file_recipe_meta(bv, r);
+    free_file_recipe_meta(r);
+}
+
 static void* filter_thread_constrained(void* arg) {
     struct fileRecipeMeta* r = NULL;
 	struct backupVersion* bv = jcr.new_bv;
@@ -722,29 +746,10 @@ static void* filter_thread_constrained(void* arg) {
 			free_chunk(c);
 
 			append_segment_flag(bv, CHUNK_SEGMENT_START, g_sequence_get_length(file_chunks));
-			// iter seq
-			GSequenceIter *iter = g_sequence_get_begin_iter(file_chunks);
-			GSequenceIter *end = g_sequence_get_end_iter(file_chunks);
-			for (; iter != end; iter = g_sequence_iter_next(iter)) {
-				c = g_sequence_get(iter);
-				assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
-				struct chunkPointer cp;
-        		cp.id = c->id;
-        		assert(cp.id>=0);
-        		memcpy(&cp.fp, &c->fp, sizeof(fingerprint));
-        		cp.size = c->size;
-        		append_n_chunk_pointers(bv, &cp ,1);
-        		r->chunknum++;
-        		r->filesize += c->size;
+            append_chunk_sequence(bv, r, file_chunks);
+            r = NULL;
+            append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
 
-    	    	jcr.chunk_num++;
-	    	    jcr.data_size += c->size;
-			}
-			append_file_recipe_meta(bv, r);
-			free_file_recipe_meta(r);
-			r = NULL;
-
-			append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
 			jcr.file_num++;
             g_sequence_free(file_chunks);
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
