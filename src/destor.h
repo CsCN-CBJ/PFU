@@ -265,6 +265,7 @@ struct destor {
 	int CDC_max_size;
 	int CDC_min_size;
 	int CDC_exp_size;
+	int CDC_ratio; // 0-100
 	int index_bloom_filter_size;
 
 	/*

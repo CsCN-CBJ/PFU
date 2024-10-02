@@ -377,7 +377,7 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 			if (g_hash_table_size(cdcTable) < destor.CDC_min_size) continue;
 
 			// 进行CDC
-			if (id % destor.CDC_exp_size == 0) break;
+			if (id % (destor.CDC_exp_size - destor.CDC_min_size) == 0) break;
 		}
 
 		// 继续插入重复chunk
@@ -403,7 +403,7 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 }
 
 static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[FEATURE_NUM]) {
-	assert(destor.CDC_max_size >= destor.CDC_min_size); // 确保两个小文件合并后不会超过最大容量
+	assert(destor.CDC_max_size >= 2 * destor.CDC_min_size); // 确保两个小文件合并后不会超过最大容量
 	DynamicArray *array = dynamic_array_new();
 	GHashTable *cacheTable = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 	recipeUnit_t *cacheListHead = NULL;
@@ -915,18 +915,23 @@ static void* sha256_thread(void* arg) {
 	return NULL;
 }
 
-static void pre_process_level() {
+static void pre_process_args() {
 	if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS) {
 		destor.upgrade_level = UPGRADE_SIMILARITY;
 		destor.upgrade_do_split_merge = TRUE;
 	} else {
 		destor.upgrade_do_split_merge = FALSE;
 	}
+
+	destor.CDC_max_size = destor.index_cache_size;
+	destor.CDC_exp_size = (int)(destor.CDC_max_size * destor.CDC_ratio / 100);
+	destor.CDC_min_size = (int)(destor.CDC_exp_size * destor.CDC_ratio / 100);
+	WARNING("CDC %d %d %d", destor.CDC_min_size, destor.CDC_exp_size, destor.CDC_max_size);
 }
 
 void do_update(int revision, char *path) {
 
-	pre_process_level();
+	pre_process_args();
 
 	init_recipe_store();
 	init_container_store();
