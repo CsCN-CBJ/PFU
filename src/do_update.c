@@ -932,6 +932,7 @@ static void pre_process_args() {
 	destor.CDC_exp_size = (int)(destor.CDC_max_size * destor.CDC_ratio / 100);
 	destor.CDC_min_size = (int)(destor.CDC_exp_size * destor.CDC_ratio / 100);
 	WARNING("CDC %d %d %d", destor.CDC_min_size, destor.CDC_exp_size, destor.CDC_max_size);
+	WARNING("Simulation level %d", destor.simulation_level);
 }
 
 void do_update(int revision, char *path) {
