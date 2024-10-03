@@ -8,7 +8,7 @@ if [ $# -ne 1 ]; then
 fi
 
 testInit
-CONFIG=-p"log-level debug"
+CONFIG=-p"log-level debug, simulation-level no"
 
 cd ~/destor
 remake
@@ -23,16 +23,16 @@ set -x
 # mkdir -p ~/destor/log/time
 mkdir -p ${DST_DIR}${RESTORE_ID}
 ./destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
-./destor -r0 ${DST_DIR}${RESTORE_ID}
+./destor -r0 -p"simulation-level no" ${DST_DIR}${RESTORE_ID}
 let ++RESTORE_ID
 
 # update test
-# redis-cli -p 6666 FLUSHALL
-# redis-cli -p 6667 FLUSHALL
+redis-cli -p 6666 FLUSHALL
+redis-cli -p 6667 FLUSHALL
 mkdir -p ${DST_DIR}${RESTORE_ID}
 ./destor -u0 ${SRC_DIR} -i$1 "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
 rm ${WORKING_DIR}/container.pool
-./destor -n1 ${DST_DIR}${RESTORE_ID}
+./destor -n1 -p"simulation-level no" ${DST_DIR}${RESTORE_ID}
 let ++RESTORE_ID
 
 compareRestore
