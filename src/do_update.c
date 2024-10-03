@@ -343,6 +343,7 @@ static int calculate_unique_container(recipeUnit_t *u, GHashTable *htb) {
 }
 
 static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM], recipeUnit_t *u) {
+	assert(destor.CDC_exp_size - destor.CDC_min_size > 0);
 	int currentSubID = 0, startArrayIndex = array->size, startChunkIndex = 0;
 	GHashTable *cdcTable = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 	for (int i = 0; i < u->recipe->chunknum;) {
@@ -392,7 +393,7 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 
 		feature_table_insert(featureTable, subFeatures, array->size);
 		dynamic_array_add(array, sub);
-		WARNING("Sub recipe %d, chunk num %d %s", sub->sub_id, sub->chunk_num, u->recipe->filename);
+		WARNING("Sub recipe %d, chunk num %d unique %d %s", sub->sub_id, sub->chunk_num, g_hash_table_size(cdcTable), u->recipe->filename);
 	}
 	int total = 0;
 	for (int i = startArrayIndex; i < array->size; i++) {
@@ -863,7 +864,6 @@ static void* pre_dedup_thread(void *arg) {
 }
 
 static void* sha256_thread(void* arg) {
-	// char code[41];
 	// 只有计算在container内的chunk的hash, 如果不是2D, 则始终为TRUE
 	int in_container = TRUE;
 	while (1) {
@@ -881,6 +881,17 @@ static void* sha256_thread(void* arg) {
 		}
 
 		if (!in_container || IS_SIGNAL_CHUNK(c) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
+			sync_queue_push(hash_queue, c);
+			continue;
+		}
+
+		if (destor.simulation_level >= SIMULATION_RESTORE) {
+			jcr.hash_num++;
+			if (CHECK_CHUNK(c, CHUNK_REPROCESS)) {
+				memcpy(c->old_fp, c->fp, sizeof(fingerprint));
+			} else {
+				memcpy(c->fp, c->old_fp, sizeof(fingerprint));
+			}
 			sync_queue_push(hash_queue, c);
 			continue;
 		}
@@ -904,12 +915,6 @@ static void* sha256_thread(void* arg) {
 			SHA256_Final(c->fp, &ctx);
 		}
 		TIMER_END(1, jcr.hash_time);
-
-
-		// hash2code(c->fp, code);
-		// code[40] = 0;
-		// VERBOSE("Update hash phase: %ldth chunk identified by %s", chunk_num++, code);
-
 		sync_queue_push(hash_queue, c);
 	}
 	return NULL;

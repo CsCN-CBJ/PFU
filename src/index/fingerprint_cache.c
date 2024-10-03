@@ -124,12 +124,18 @@ void init_upgrade_fingerprint_cache() {
 		init_upgrade_1D_fingerprint_cache();
 		return;
 	}
-	upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, g_hash_table_destroy, g_int64_hash, g_int64_equal);
+	if (destor.fake_containers) {
+		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, NULL, g_int64_hash, g_int64_equal);
+	} else {
+		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, g_hash_table_destroy, g_int64_hash, g_int64_equal);
+	}
 }
 
 upgrade_index_value_t* upgrade_fingerprint_cache_lookup(struct chunk* c) {
 	GHashTable *htb = lru_hashmap_lookup(upgrade_cache, &c->id);
 	if (htb) {
+		if (destor.fake_containers) return (upgrade_index_value_t*)1;
+		
 		upgrade_index_value_t* v = g_hash_table_lookup(htb, &c->old_fp);
 		assert(v);
 		return v;
@@ -140,7 +146,13 @@ upgrade_index_value_t* upgrade_fingerprint_cache_lookup(struct chunk* c) {
 void upgrade_fingerprint_cache_insert(containerid id, GHashTable *htb) {
 	containerid *id_p = malloc(sizeof(containerid));
 	*id_p = id;
-	lru_hashmap_insert(upgrade_cache, id_p, htb);
+
+	if (destor.fake_containers) {
+		g_hash_table_destroy(htb);
+		lru_hashmap_insert(upgrade_cache, id_p, "1");
+	} else {
+		lru_hashmap_insert(upgrade_cache, id_p, htb);
+	}
 }
 
 /**

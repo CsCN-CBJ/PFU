@@ -517,8 +517,13 @@ void _upgrade_dedup_buffer(struct chunk *c, struct index_overhead *stats) {
     stats->cache_lookup_requests++;
     if(v){
         stats->cache_hits++;
-        c->id = v->id;
-        memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+        if (destor.fake_containers) {
+            c->id = 1;
+            memcpy(&c->fp, &c->old_fp, sizeof(fingerprint));
+        } else {
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+        }
         SET_CHUNK(c, CHUNK_DUPLICATE);
     }
 }
