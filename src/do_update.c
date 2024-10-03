@@ -7,6 +7,7 @@
 #include "update.h"
 #include "backup.h"
 #include "index/index.h"
+#include "index/upgrade_cache.h"
 
 /* defined in index.c */
 extern struct index_overhead index_overhead, upgrade_index_overhead;

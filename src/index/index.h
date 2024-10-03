@@ -24,17 +24,9 @@ void close_index();
  * lookup fingerprints in a segment in index.
  */
 int index_lookup(struct segment*);
-int upgrade_index_lookup(struct chunk *c);
-struct containerMap {
-    containerid old_id;
-    containerid new_id;
-    int16_t container_num;
-};
-void upgrade_index_lookup_2D_filter(struct chunk *c);
 /*
  * Insert/update fingerprints.
  */
-void upgrade_index_update(GSequence *chunks, int64_t id);
 void index_update(GHashTable *features, int64_t id);
 
 void index_delete(fingerprint *fp, int64_t id);

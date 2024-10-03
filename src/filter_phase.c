@@ -6,6 +6,7 @@
 #include "rewrite_phase.h"
 #include "backup.h"
 #include "index/index.h"
+#include "index/upgrade_cache.h"
 #include "index/fingerprint_cache.h"
 
 static pthread_t filter_t;
