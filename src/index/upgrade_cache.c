@@ -12,6 +12,7 @@ GHashTable *upgrade_container;
 GHashTable *upgrade_storage_buffer = NULL; // 确保当前在storage_buffer中的container不会被LRU踢出
 
 void init_upgrade_index() {
+    init_upgrade_fingerprint_cache();
     upgrade_processing = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
     upgrade_container = g_hash_table_new_full(g_int64_hash, g_int64_equal, NULL, free);
     memset(&upgrade_index_overhead, 0, sizeof(struct index_overhead));
@@ -134,11 +135,17 @@ void _upgrade_dedup_kvstore(struct chunk *c, struct index_overhead *stats) {
     stats->kvstore_lookup_requests++;
     if (upgrade_fingerprint_cache_prefetch(c->id)) {
         stats->kvstore_hits++;
+        stats->read_prefetching_units++;
         upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
         assert(v);
         assert(v->id >= 0);
-        c->id = v->id;
-        memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+        if (destor.fake_containers) {
+            c->id = 1;
+            memcpy(&c->fp, &c->old_fp, sizeof(fingerprint));
+        } else {
+            c->id = v->id;
+            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+        }
         SET_CHUNK(c, CHUNK_DUPLICATE);
     }
 }
@@ -150,10 +157,7 @@ void upgrade_index_lookup_2D(struct chunk *c, struct index_overhead *stats, int 
     stats->index_lookup_requests++;
 
     _upgrade_dedup_buffer(c, stats);
-
-    if (!constrained) {
-        _upgrade_dedup_kvstore(c, stats);
-    }
+    _upgrade_dedup_kvstore(c, stats);
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         stats->lookup_requests_for_unique++;
@@ -211,12 +215,8 @@ int upgrade_index_lookup(struct chunk* c) {
 */
 static struct lruCache* upgrade_lru_queue;
 static lruHashMap_t *upgrade_cache;
+static lruHashMap_t *upgrade_external_cache;
 GHashTable *upgrade_cache_htb;
-
-void free_upgrade_index_value(GHashTable **htb) {
-	g_hash_table_destroy(*htb);
-	free(htb);
-}
 
 int compare_upgrade_index_value(GHashTable **htb, fingerprint *old_fp) {
 	return g_hash_table_lookup(*htb, old_fp) != NULL;
@@ -230,8 +230,11 @@ void init_upgrade_fingerprint_cache() {
 	}
 	if (destor.fake_containers) {
 		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, NULL, g_int64_hash, g_int64_equal);
+        upgrade_external_cache = new_lru_hashmap(destor.external_cache_size, NULL, g_int64_hash, g_int64_equal);
 	} else {
-		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, g_hash_table_destroy, g_int64_hash, g_int64_equal);
+        // inner cache踢出时不释放
+		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, NULL, g_int64_hash, g_int64_equal);
+        upgrade_external_cache = new_lru_hashmap(destor.external_cache_size, g_hash_table_destroy, g_int64_hash, g_int64_equal);
 	}
 }
 
@@ -248,21 +251,30 @@ upgrade_index_value_t* upgrade_fingerprint_cache_lookup(struct chunk* c) {
 }
 
 void upgrade_fingerprint_cache_insert(containerid id, GHashTable *htb) {
+    // 插入in-memory cache, 被LRU淘汰的会插入external cache
 	containerid *id_p = malloc(sizeof(containerid));
 	*id_p = id;
+    void *key = NULL, *value = NULL;
 
 	if (destor.fake_containers) {
 		g_hash_table_destroy(htb);
-		lru_hashmap_insert(upgrade_cache, id_p, "1");
+		lru_hashmap_insert_and_retrive(upgrade_cache, id_p, "1", &key, &value);
 	} else {
-		lru_hashmap_insert(upgrade_cache, id_p, htb);
+		lru_hashmap_insert_and_retrive(upgrade_cache, id_p, htb, &key, &value);
 	}
+
+    assert((key && value) || (!key && !value));
+    if (key) {
+        VERBOSE("upgrade_fingerprint_cache_insert: insert external cache %lld", *(containerid *)key);
+        lru_hashmap_insert(upgrade_external_cache, key, value);
+    }
 }
 
 /**
  * return 0 if not found
 */
-int upgrade_fingerprint_cache_prefetch(containerid id) {
+int upgrade_fingerprint_cache_prefetch_DB(containerid id) {
+    assert(0); // 重新使用时请仔细检查各项要求
 	assert(destor.upgrade_level == UPGRADE_2D_RELATION);
 	int bufferSize = sizeof(upgrade_index_kv_t) * MAX_META_PER_CONTAINER;
 	upgrade_index_kv_t *kv; // sql insertion buffer
@@ -287,6 +299,37 @@ int upgrade_fingerprint_cache_prefetch(containerid id) {
 	free(kv);
 	upgrade_fingerprint_cache_insert(id, c);
 	return 1;
+}
+
+int upgrade_fingerprint_cache_prefetch(containerid id) {
+    if (lru_hashmap_lookup(upgrade_external_cache, &id)) {
+        // 将external cache命中的数据(第一个)放入in-memory cache
+
+        // 从external cache中删除
+        struct lruCache *lru = upgrade_external_cache->lru;
+        GList* elem = g_list_first(lru->elem_queue);
+        if (lru->size == 1) {
+            assert(elem == lru->elem_queue_tail);
+            lru->elem_queue_tail = NULL;
+        }
+        lru->elem_queue = g_list_remove_link(lru->elem_queue, elem);
+
+        void **victim = (void **)elem->data;
+        g_list_free_1(elem);
+        lru->size--;
+        assert(g_hash_table_remove(upgrade_external_cache->map, victim[0]));
+
+        // 加入in-memory cache
+        void *key = NULL, *value = NULL;
+        lru_hashmap_insert_and_retrive(upgrade_cache, victim[0], victim[1], &key, &value);
+        free(victim);
+        assert((key && value) || (!key && !value));
+        if (key) {
+            lru_hashmap_insert(upgrade_external_cache, key, value);
+        }
+        return 1;
+    }
+    return 0;
 }
 
 /**

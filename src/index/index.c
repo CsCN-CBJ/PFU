@@ -117,7 +117,6 @@ void init_index() {
     init_kvstore();
 
     init_fingerprint_cache();
-    init_upgrade_fingerprint_cache();
     memset(&index_overhead, 0, sizeof(struct index_overhead));
 
     init_upgrade_index();

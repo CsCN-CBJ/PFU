@@ -49,5 +49,6 @@ lruHashMap_t *new_lru_hashmap(int size, void (*free_value)(void *),
 void free_lru_hashmap(lruHashMap_t *c);
 void* lru_hashmap_lookup(lruHashMap_t *c, void* key);
 void lru_hashmap_insert(lruHashMap_t *c, void* key, void* value);
+void lru_hashmap_insert_and_retrive(lruHashMap_t *c, void *key, void *value, void **get_key, void **get_value);
 
 #endif /* Cache_H_ */

@@ -153,7 +153,7 @@ lruHashMap_t *new_lru_hashmap(int size, void (*free_value)(void *),
 		GHashFunc hash_func, GEqualFunc equal_func) {
 	lruHashMap_t *c = (lruHashMap_t *) malloc(sizeof(lruHashMap_t));
 	c->lru = new_lru_cache(size, free_value, NULL);
-	c->map = g_hash_table_new_full(hash_func, equal_func, free, NULL);
+	c->map = g_hash_table_new_full(hash_func, equal_func, NULL, NULL);
 	return c;
 }
 
@@ -179,7 +179,7 @@ void* lru_hashmap_lookup(lruHashMap_t *c, void* key) {
 	return ((void **)elem->data)[1];
 }
 
-void lru_hashmap_insert(lruHashMap_t *c, void* key, void* value) {
+void lru_hashmap_insert_and_retrive(lruHashMap_t *c, void *key, void *value, void **get_key, void **get_value) {
 	struct lruCache *lru = c->lru;
 
 	if (lru->max_size > 0 && lru->size == lru->max_size) {
@@ -187,17 +187,25 @@ void lru_hashmap_insert(lruHashMap_t *c, void* key, void* value) {
 		lru->elem_queue_tail = last->prev;
 		lru->elem_queue = g_list_remove_link(lru->elem_queue, last);
 		
-		void *victim = last->data;
+		void **victim = (void **)last->data;
 		g_list_free_1(last);
 		lru->size--;
 		
-		assert(g_hash_table_remove(c->map, ((void **)victim)[0]));
-		if (lru->free_elem) {
-			lru->free_elem(((void **)victim)[1]);
+		assert(g_hash_table_remove(c->map, victim[0]));
+		if (get_key) {
+			*get_key = victim[0];
+		} else {
+			free(victim[0]);
+		}
+		if (get_value) {
+			*get_value = victim[1];
+		} else if (lru->free_elem) {
+			lru->free_elem(victim[1]);
 		}
 		free(victim);
 	}
 
+	// 这里必须在LRU中同时存key与value是为了在删除时能够同时删除map中的元素
 	void **data = (void **)malloc(sizeof(void *) * 2);
 	data[0] = key;
 	data[1] = value;
@@ -208,4 +216,8 @@ void lru_hashmap_insert(lruHashMap_t *c, void* key, void* value) {
 		lru->elem_queue_tail = lru->elem_queue;
 	}
 	lru->size++;
+}
+
+void lru_hashmap_insert(lruHashMap_t *c, void *key, void *value) {
+	lru_hashmap_insert_and_retrive(c, key, value, NULL, NULL);
 }
