@@ -104,9 +104,21 @@ void upgrade_index_lookup_1D(struct chunk *c){
 /**
  * 2D
  */
+void copy_value_to_chunk(upgrade_index_value_t *v, struct chunk *c) {
+    if (destor.fake_containers) {
+        c->id = 1;
+        memcpy(&c->fp, &c->old_fp, sizeof(fingerprint));
+    } else {
+        assert(v->id >= 0);
+        c->id = v->id;
+        memcpy(&c->fp, &v->fp, sizeof(fingerprint));
+    }
+}
+
 void _upgrade_dedup_buffer(struct chunk *c, struct index_overhead *stats) {
     if (CHECK_CHUNK(c, CHUNK_DUPLICATE)) return;
 
+    stats->cache_lookup_requests++;
     /* Searching in fingerprint cache */
     upgrade_index_value_t* v = NULL;
     if (upgrade_storage_buffer) {
@@ -115,22 +127,14 @@ void _upgrade_dedup_buffer(struct chunk *c, struct index_overhead *stats) {
     if (!v) {
         v = upgrade_fingerprint_cache_lookup(c);
     }
-    stats->cache_lookup_requests++;
     if(v){
         stats->cache_hits++;
-        if (destor.fake_containers) {
-            c->id = 1;
-            memcpy(&c->fp, &c->old_fp, sizeof(fingerprint));
-        } else {
-            assert(v->id >= 0);
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-        }
+        copy_value_to_chunk(v, c);
         SET_CHUNK(c, CHUNK_DUPLICATE);
     }
 }
 
-void _upgrade_dedup_kvstore(struct chunk *c, struct index_overhead *stats) {
+void _upgrade_dedup_external(struct chunk *c, struct index_overhead *stats) {
     if (CHECK_CHUNK(c, CHUNK_DUPLICATE)) return;
 
     stats->kvstore_lookup_requests++;
@@ -139,14 +143,7 @@ void _upgrade_dedup_kvstore(struct chunk *c, struct index_overhead *stats) {
         stats->read_prefetching_units++;
         upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
         assert(v);
-        if (destor.fake_containers) {
-            c->id = 1;
-            memcpy(&c->fp, &c->old_fp, sizeof(fingerprint));
-        } else {
-            assert(v->id >= 0);
-            c->id = v->id;
-            memcpy(&c->fp, &v->fp, sizeof(fingerprint));
-        }
+        copy_value_to_chunk(v, c);
         SET_CHUNK(c, CHUNK_DUPLICATE);
     }
 }
@@ -158,7 +155,7 @@ void upgrade_index_lookup_2D(struct chunk *c, struct index_overhead *stats, int 
     stats->index_lookup_requests++;
 
     _upgrade_dedup_buffer(c, stats);
-    _upgrade_dedup_kvstore(c, stats);
+    _upgrade_dedup_external(c, stats);
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         stats->lookup_requests_for_unique++;
