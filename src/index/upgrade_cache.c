@@ -122,6 +122,7 @@ void _upgrade_dedup_buffer(struct chunk *c, struct index_overhead *stats) {
             c->id = 1;
             memcpy(&c->fp, &c->old_fp, sizeof(fingerprint));
         } else {
+            assert(v->id >= 0);
             c->id = v->id;
             memcpy(&c->fp, &v->fp, sizeof(fingerprint));
         }
@@ -138,11 +139,11 @@ void _upgrade_dedup_kvstore(struct chunk *c, struct index_overhead *stats) {
         stats->read_prefetching_units++;
         upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
         assert(v);
-        assert(v->id >= 0);
         if (destor.fake_containers) {
             c->id = 1;
             memcpy(&c->fp, &c->old_fp, sizeof(fingerprint));
         } else {
+            assert(v->id >= 0);
             c->id = v->id;
             memcpy(&c->fp, &v->fp, sizeof(fingerprint));
         }
