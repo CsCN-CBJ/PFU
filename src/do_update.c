@@ -932,6 +932,21 @@ static void pre_process_args() {
 	destor.CDC_max_size = destor.index_cache_size;
 	destor.CDC_exp_size = (int)(destor.CDC_max_size * destor.CDC_ratio / 100);
 	destor.CDC_min_size = (int)(destor.CDC_exp_size * destor.CDC_ratio / 100);
+
+	switch (destor.upgrade_level) {
+	case UPGRADE_NAIVE:
+	case UPGRADE_1D_RELATION:
+	case UPGRADE_2D_RELATION:
+		destor.external_cache_size = 0; // no limit
+		break;
+	case UPGRADE_2D_CONSTRAINED:
+	case UPGRADE_SIMILARITY:
+		break;
+	default:
+		assert(0);
+		break;
+	}
+
 	WARNING("CDC %d %d %d", destor.CDC_min_size, destor.CDC_exp_size, destor.CDC_max_size);
 	WARNING("Simulation level %d", destor.simulation_level);
 	WARNING("cache size %d %d", destor.index_cache_size, destor.external_cache_size);
