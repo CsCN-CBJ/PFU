@@ -47,8 +47,7 @@ static void print_chunk_hash(uint64_t chunk_count, const uint8_t *hash,
 	printf("\n");
 }
 
-void* read_fsl_trace(void *argv)
-{
+void send_one_trace(sds path) {
 	char buf[MAXLINE];
 	struct hashfile_handle *handle;
 	const struct chunk_info *ci;
@@ -56,7 +55,7 @@ void* read_fsl_trace(void *argv)
 	time_t scan_start_time;
 	int ret;
 
-	handle = hashfile_open(jcr.path);
+	handle = hashfile_open(path);
 	if (!handle) {
 		fprintf(stderr, "Error opening hash file: %d!", errno);
         exit(1);
@@ -85,7 +84,6 @@ void* read_fsl_trace(void *argv)
 	printf("Hashing method: %s\n", buf);
 
 	/* Go over the files in a hashfile */
-	/*printf("== List of files and hashes ==\n");*/
 	while (1) {
 
 		TIMER_DECLARE(1);
@@ -105,12 +103,6 @@ void* read_fsl_trace(void *argv)
 		/* exit the loop if it was the last file */
 		if (ret == 0)
 			break;
-
-		/*printf("File path: %s\n", hashfile_curfile_path(handle));*/
-		/*printf("File size: %"PRIu64 " B\n",*/
-				/*hashfile_curfile_size(handle));*/
-		/*printf("Chunks number: %" PRIu64 "\n",*/
-				/*hashfile_curfile_numchunks(handle));*/
 
         struct chunk* c = new_chunk(strlen(hashfile_curfile_path(handle))+1);
         strcpy(c->data, hashfile_curfile_path(handle));
@@ -134,10 +126,6 @@ void* read_fsl_trace(void *argv)
 			chunk_count++;
 
             c = new_chunk(0);
-
-			/*print_chunk_hash(chunk_count, ci->hash,*/
-					/*hashfile_hash_size(handle) / 8);*/
-
             c->size = ci->size;
             /*
              * Need some padding.
@@ -154,21 +142,46 @@ void* read_fsl_trace(void *argv)
 		sync_queue_push(trace_queue, c);
 
 	}
-
 	hashfile_close(handle);
+}
 
+static void find_file_in_list(sds config_path) {
+    char line[256];
+	FILE *file = fopen(config_path, "r");
+    if (file == NULL) {
+		fprintf(stderr, "cannot find %s\n", config_path);
+		exit(1);
+    }
+
+    while (fgets(line, sizeof(line), file)) {
+        if (line[strlen(line) - 1] == '\n') {
+            line[strlen(line) - 1] = '\0';
+        }
+		sds path = sdsnew(line);
+		send_one_trace(path);
+		sdsfree(path);
+    }
+    fclose(file);
+}
+
+void* read_fsl_trace(void *argv)
+{
+	struct stat st;
+	stat(jcr.path, &st);
+	if (S_ISDIR(st.st_mode)) {
+		assert(0); // not implemented
+	} else if (S_ISREG(st.st_mode)) {
+		if (strstr(jcr.path, ".txt")) {
+			find_file_in_list(jcr.path);
+		} else {
+			send_one_trace(jcr.path);
+		}
+	} else {
+		fprintf(stderr, "The path %s is not a regular file or directory\n", jcr.path);
+		exit(1);
+	}
 	sync_queue_term(trace_queue);
 
     return NULL;
 }
 
-/*int main(int argc, char *argv[])*/
-/*{*/
-	/*if (argc != 2) {*/
-		/*fprintf(stderr, "Wrong usage!\n");*/
-		/*fprintf(stderr, "Usage: %s <hashfile>\n", argv[0]);*/
-		/*return -1;*/
-	/*}*/
-
-	/*return translate_hashfile(argv[1]);*/
-/*}*/
