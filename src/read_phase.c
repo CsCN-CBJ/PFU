@@ -111,7 +111,6 @@ static void find_file_in_list(sds config_path) {
             line[strlen(line) - 1] = '\0';
         }
 		sds path = sdsnew(line);
-		FILE *f = fopen(path, "r");
 		read_file(path);
 		sdsfree(path);
     }

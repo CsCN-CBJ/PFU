@@ -203,7 +203,9 @@ static void index_lookup_base(struct segment *s){
                 }else{
                     NOTICE("Filter phase: A key collision occurs");
                 }
-                free(ids);
+                if (destor.index_key_value_store == INDEX_KEY_VALUE_ROR) {
+                    free(ids);
+                }
             }else{
                 index_overhead.lookup_requests_for_unique++;
                 VERBOSE("Dedup phase: non-existing fingerprint");

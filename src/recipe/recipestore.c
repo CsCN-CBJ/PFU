@@ -88,6 +88,9 @@ struct backupVersion* create_backup_version(const char *path) {
 
 	sds fname = sdsdup(b->fname_prefix);
 	fname = sdscat(fname, ".meta");
+	if (destor.fake_containers) {
+		fname = sdscpy(fname, "/dev/null");
+	}
 	if ((b->metadata_fp = fopen(fname, "w")) == 0) {
 		fprintf(stderr, "Can not create bv%d.meta!\n", b->bv_num);
 		exit(1);
@@ -110,6 +113,9 @@ struct backupVersion* create_backup_version(const char *path) {
 
 	fname = sdscpy(fname, b->fname_prefix);
 	fname = sdscat(fname, ".recipe");
+	if (destor.fake_containers) {
+		fname = sdscpy(fname, "/dev/null");
+	}
 	if ((b->recipe_fp = fopen(fname, "w+")) <= 0) {
 		fprintf(stderr, "Can not create bv%d.recipe!\n", b->bv_num);
 		exit(1);
@@ -120,6 +126,9 @@ struct backupVersion* create_backup_version(const char *path) {
 
 	fname = sdscpy(fname, b->fname_prefix);
 	fname = sdscat(fname, ".records");
+	if (destor.fake_containers) {
+		fname = sdscpy(fname, "/dev/null");
+	}
 	if ((b->record_fp = fopen(fname, "w")) <= 0) {
 		fprintf(stderr, "Can not create bv%d.records!\n", b->bv_num);
 		exit(1);
