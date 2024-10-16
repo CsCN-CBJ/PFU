@@ -105,6 +105,7 @@ void init_update_jcr(int revision, char *path) {
 }
 
 void print_jcr_result(FILE *fp) {
+	if (jcr.logic_recipe_unique_container == 0) jcr.logic_recipe_unique_container = jcr.physical_recipe_unique_container;
 	fprintf(fp, "sync_buffer_num: %u\n", jcr.sync_buffer_num);
 	fprintf(fp, "read_container: %u\n", jcr.read_container_num);
 	fprintf(fp, "read_container_new: %u\n", jcr.read_container_new);
@@ -114,4 +115,6 @@ void print_jcr_result(FILE *fp) {
 	fprintf(fp, "sql_insert: %u\n", jcr.sql_insert);
 	fprintf(fp, "sql_fetch: %u\n", jcr.sql_fetch);
 	fprintf(fp, "sql_fetch_buffered: %u\n", jcr.sql_fetch_buffered);
+	fprintf(fp, "logic_recipe_unique_container: %u\n", jcr.logic_recipe_unique_container);
+	fprintf(fp, "physical_recipe_unique_container: %u\n", jcr.physical_recipe_unique_container);
 }

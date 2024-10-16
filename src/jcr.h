@@ -30,7 +30,7 @@ struct jcr{
 	int32_t pre_process_file_num;
 	int64_t data_size;
 	int64_t unique_data_size;
-	int32_t chunk_num;
+	int64_t chunk_num;
 	int32_t unique_chunk_num;
 	int32_t zero_chunk_num;
 	int64_t zero_chunk_size;
@@ -72,6 +72,8 @@ struct jcr{
 	uint32_t read_container_new;
 	uint32_t read_container_new_buffered; 
 	uint32_t sync_buffer_num;
+	uint32_t logic_recipe_unique_container;
+	uint32_t physical_recipe_unique_container;
 };
 
 extern struct jcr jcr;

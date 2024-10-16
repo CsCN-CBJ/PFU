@@ -25,7 +25,7 @@ function remake() {
 
 function resetAll() {
     rm -f destor.log
-    rm -rf ${TEST_DIR}
+    rm -rf ${WORKING_DIR}
     mkdir -p ${WORKING_DIR}/recipes/
     mkdir -p ${WORKING_DIR}/index/
     mkdir -p ${LOG_DIR}
