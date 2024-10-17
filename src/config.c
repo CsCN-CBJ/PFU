@@ -165,6 +165,15 @@ void load_config_from_string(sds config, const char *sep) {
 		} else if (strcasecmp(argv[0], "recipe-cdc-ratio")
 				== 0 && argc == 2) {
 			destor.CDC_ratio = atoi(argv[1]);
+		} else if (strcasecmp(argv[0], "recipe-cdc-max-size")
+				== 0 && argc == 2) {
+			destor.CDC_max_size = atoi(argv[1]);
+		} else if (strcasecmp(argv[0], "recipe-cdc-exp-size")
+				== 0 && argc == 2) {
+			destor.CDC_exp_size = atoi(argv[1]);
+		} else if (strcasecmp(argv[0], "recipe-cdc-min-size")
+				== 0 && argc == 2) {
+			destor.CDC_min_size = atoi(argv[1]);
 		} else if (strcasecmp(argv[0], "fingerprint-index-key-value") == 0
 				&& argc == 2) {
 			if (strcasecmp(argv[1], "htable") == 0) {

@@ -908,7 +908,13 @@ static void* filter_thread_constrained(void* arg) {
             assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
             assert(c->id >= 0);
             
-			g_sequence_append(file_chunks, c);
+            if (destor.fake_containers) {
+                jcr.chunk_num++;
+                jcr.data_size += c->size;
+                free_chunk(c);
+            } else {
+                g_sequence_append(file_chunks, c);
+            }
 		}
         TIMER_END(1, jcr.filter_time);
 	}

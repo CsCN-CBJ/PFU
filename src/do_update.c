@@ -929,9 +929,14 @@ static void pre_process_args() {
 		destor.upgrade_do_split_merge = FALSE;
 	}
 
-	destor.CDC_max_size = destor.index_cache_size;
-	destor.CDC_exp_size = (int)(destor.CDC_max_size * destor.CDC_ratio / 100);
-	destor.CDC_min_size = (int)(destor.CDC_exp_size * destor.CDC_ratio / 100);
+	if (destor.CDC_ratio != 0) {
+		destor.CDC_max_size = destor.index_cache_size;
+		destor.CDC_exp_size = (int)(destor.CDC_max_size * destor.CDC_ratio / 100);
+		destor.CDC_min_size = (int)(destor.CDC_exp_size * destor.CDC_ratio / 100);
+	}
+	assert(destor.CDC_max_size >= destor.CDC_exp_size);
+	assert(destor.CDC_exp_size >= destor.CDC_min_size);
+	assert(destor.CDC_min_size > 0);
 
 	switch (destor.upgrade_level) {
 	case UPGRADE_NAIVE:
