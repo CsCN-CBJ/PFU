@@ -14,7 +14,7 @@ static int64_t chunk_num;
 extern GHashTable *upgrade_processing;
 extern GHashTable *upgrade_container;
 extern GHashTable *upgrade_storage_buffer;
-containerid upgrade_storage_buffer_id = -1;
+extern containerid upgrade_storage_buffer_id;
 
 struct{
 	/* accessed in dedup phase */

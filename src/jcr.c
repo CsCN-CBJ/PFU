@@ -117,4 +117,5 @@ void print_jcr_result(FILE *fp) {
 	fprintf(fp, "sql_fetch_buffered: %u\n", jcr.sql_fetch_buffered);
 	fprintf(fp, "logic_recipe_unique_container: %u\n", jcr.logic_recipe_unique_container);
 	fprintf(fp, "physical_recipe_unique_container: %u\n", jcr.physical_recipe_unique_container);
+	fprintf(fp, "recipe_hit: %u\n", jcr.recipe_hit);
 }

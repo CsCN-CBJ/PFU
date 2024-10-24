@@ -10,6 +10,7 @@ struct index_overhead upgrade_index_overhead;
 GHashTable *upgrade_processing;
 GHashTable *upgrade_container;
 GHashTable *upgrade_storage_buffer = NULL; // 确保当前在storage_buffer中的container不会被LRU踢出
+containerid upgrade_storage_buffer_id = -1;
 
 void init_upgrade_index() {
     init_upgrade_fingerprint_cache();
@@ -369,5 +370,19 @@ void upgrade_1D_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_valu
 	lru_cache_insert(upgrade_lru_queue, kv, upgrade_1D_remove, NULL);
 	GList *elem = g_list_first(upgrade_lru_queue->elem_queue);
 	g_hash_table_insert(upgrade_cache_htb, &kv->old_fp, elem);
+}
+
+void count_cache_hit(struct chunkPointer* cps, int64_t chunk_num) {
+    GHashTable *unique_ids = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
+    for (int i = 0; i < chunk_num; i++) {
+        if (g_hash_table_lookup(unique_ids, &cps[i].id)) continue;
+        containerid *p = malloc(sizeof(containerid));
+        *p = cps[i].id;
+        g_hash_table_insert(unique_ids, p, "1");
+        if (upgrade_storage_buffer_id == cps[i].id || g_hash_table_lookup(upgrade_cache->map, &cps[i].id)) {
+            jcr.recipe_hit++;
+        }
+    }
+    g_hash_table_destroy(unique_ids);
 }
 

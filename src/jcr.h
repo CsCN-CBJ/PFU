@@ -74,6 +74,8 @@ struct jcr{
 	uint32_t sync_buffer_num;
 	uint32_t logic_recipe_unique_container;
 	uint32_t physical_recipe_unique_container;
+
+	uint32_t recipe_hit;
 };
 
 extern struct jcr jcr;

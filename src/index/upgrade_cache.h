@@ -42,4 +42,6 @@ int upgrade_fingerprint_cache_prefetch(containerid id);
 upgrade_index_value_t* upgrade_1D_fingerprint_cache_lookup(fingerprint *old_fp);
 void upgrade_1D_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t *v);
 
+void count_cache_hit(struct chunkPointer* cps, int64_t chunk_num);
+
 #endif /* UPGRADE_CACHE_H_ */
