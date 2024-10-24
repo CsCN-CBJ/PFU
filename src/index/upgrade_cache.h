@@ -9,6 +9,7 @@
 #define UPGRADE_CACHE_H_
 
 #include "../destor.h"
+#include "../recipe/recipestore.h"
 
 typedef struct {
     int64_t id;
