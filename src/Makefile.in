@@ -113,7 +113,8 @@ am_libdestor_a_OBJECTS = destor.$(OBJEXT) jcr.$(OBJEXT) \
 	cap_rewrite.$(OBJEXT) cbr_rewrite.$(OBJEXT) \
 	har_rewrite.$(OBJEXT) restore_aware.$(OBJEXT) \
 	do_restore.$(OBJEXT) optimal_restore.$(OBJEXT) \
-	assembly_restore.$(OBJEXT) cma.$(OBJEXT) do_delete.$(OBJEXT)
+	assembly_restore.$(OBJEXT) cma.$(OBJEXT) do_delete.$(OBJEXT) \
+	similarity.$(OBJEXT)
 libdestor_a_OBJECTS = $(am_libdestor_a_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -261,7 +262,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 noinst_LIBRARIES = libdestor.a
-libdestor_a_SOURCES = destor.c jcr.c config.c do_backup.c do_update.c read_phase.c chunk_phase.c hash_phase.c trace_phase.c dedup_phase.c rewrite_phase.c filter_phase.c cfl_rewrite.c cap_rewrite.c cbr_rewrite.c har_rewrite.c restore_aware.c do_restore.c optimal_restore.c assembly_restore.c cma.c do_delete.c
+libdestor_a_SOURCES = destor.c jcr.c config.c do_backup.c do_update.c read_phase.c chunk_phase.c hash_phase.c trace_phase.c dedup_phase.c rewrite_phase.c filter_phase.c cfl_rewrite.c cap_rewrite.c cbr_rewrite.c har_rewrite.c restore_aware.c do_restore.c optimal_restore.c assembly_restore.c cma.c do_delete.c similarity.c
 all: all-am
 
 .SUFFIXES:
@@ -331,6 +332,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/read_phase.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/restore_aware.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rewrite_phase.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/similarity.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/trace_phase.Po@am__quote@
 
 .c.o:

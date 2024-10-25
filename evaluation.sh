@@ -60,7 +60,8 @@ function update() {
 # update 0
 # update 2
 # update 3
-update 4
+# update 4
+# update 5
 
 if [ $chk -eq 1 ]; then
     compareRestore
