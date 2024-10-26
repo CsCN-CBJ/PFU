@@ -96,6 +96,7 @@ void append_n_chunk_pointers(struct backupVersion* b,
 struct fileRecipeMeta* read_next_file_recipe_meta(struct backupVersion* b);
 struct chunkPointer* read_next_n_chunk_pointers(struct backupVersion* b, int n,
 		int *k);
+struct chunkPointer* read_n_chunk_pointers(struct backupVersion* b, off_t off, int n);
 containerid* read_next_n_records(struct backupVersion* b, int n, int *k);
 struct fileRecipeMeta* new_file_recipe_meta(char* name);
 struct fileRecipeMeta* copy_file_recipe_meta(struct fileRecipeMeta* r);

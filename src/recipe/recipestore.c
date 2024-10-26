@@ -348,18 +348,18 @@ segmentid append_segment_flag(struct backupVersion* b, int flag, int segment_siz
 
 	if(flag == CHUNK_SEGMENT_START){
 		/* Two flags and many chunk pointers */
-		b->segmentlen = (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t))*2
-				+ segment_size * (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t));
+		b->segmentlen = (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t))*segment_size; // * 2
+				// + segment_size * (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t));
 		b->segmentbuf = malloc(b->segmentlen);
 		b->segmentbufoff = 0;
 	}
 
-	memcpy(b->segmentbuf + b->segmentbufoff, &cp.fp, sizeof(fingerprint));
-	b->segmentbufoff += sizeof(fingerprint);
-	memcpy(b->segmentbuf + b->segmentbufoff, &cp.id, sizeof(containerid));
-	b->segmentbufoff += sizeof(containerid);
-	memcpy(b->segmentbuf + b->segmentbufoff, &cp.size, sizeof(int32_t));
-	b->segmentbufoff += sizeof(int32_t);
+	// memcpy(b->segmentbuf + b->segmentbufoff, &cp.fp, sizeof(fingerprint));
+	// b->segmentbufoff += sizeof(fingerprint);
+	// memcpy(b->segmentbuf + b->segmentbufoff, &cp.id, sizeof(containerid));
+	// b->segmentbufoff += sizeof(containerid);
+	// memcpy(b->segmentbuf + b->segmentbufoff, &cp.size, sizeof(int32_t));
+	// b->segmentbufoff += sizeof(int32_t);
 
 	if(flag == CHUNK_SEGMENT_END){
 		VERBOSE("Filter phase: write a segment start at offset %lld!", off);
@@ -467,6 +467,25 @@ struct chunkPointer* read_next_n_chunk_pointers(struct backupVersion* b, int n,
 
 	read_chunk_num += num;
 	assert(read_chunk_num <= b->number_of_chunks);
+
+	return cp;
+}
+
+struct chunkPointer* read_n_chunk_pointers(struct backupVersion* b, off_t off, int n) {
+	fseek(b->recipe_fp, off, SEEK_SET);
+	struct chunkPointer *cp = (struct chunkPointer *) malloc(
+			sizeof(struct chunkPointer) * n);
+
+	for (int i = 0; i < n; i++) {
+		assert(fread(&(cp[i].fp), sizeof(fingerprint), 1, b->recipe_fp) == 1);
+		assert(fread(&(cp[i].id), sizeof(containerid), 1, b->recipe_fp) == 1);
+		assert(fread(&(cp[i].size), sizeof(int32_t), 1, b->recipe_fp) == 1);
+		/* Ignore segment boundaries */
+		if(cp[i].id == 0 - CHUNK_SEGMENT_START || cp[i].id == 0 - CHUNK_SEGMENT_END) {
+			WARNING("ignore %d %d", i, n);
+			assert(0); // segment boundary will lead to incorrect CDC recipe offset
+		}
+	}
 
 	return cp;
 }

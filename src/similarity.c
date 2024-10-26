@@ -198,6 +198,7 @@ struct featureList {
 typedef struct recipeUnit {
 	struct fileRecipeMeta *recipe;
 	struct chunkPointer *chunks;
+	int64_t chunk_off;
 
 	containerid sub_id;
 	containerid total_num;
@@ -245,12 +246,14 @@ static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
 		features[i] = LLONG_MAX;
 	}
 
+	recipeUnit_t *unit = malloc(sizeof(recipeUnit_t));
+	unit->chunk_off = ftell(jcr.bv->recipe_fp);
+
 	int chunknum;
 	struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
 	struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &chunknum);
 	assert(r->chunknum == chunknum);
 
-	recipeUnit_t *unit = malloc(sizeof(recipeUnit_t));
 	unit->recipe = r;
 	unit->chunks = cp;
 	unit->next = NULL;
@@ -287,7 +290,7 @@ static int calculate_unique_container(recipeUnit_t *u, GHashTable *htb) {
 
 static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM], recipeUnit_t *u) {
 	assert(destor.CDC_exp_size - destor.CDC_min_size > 0);
-	int currentSubID = 0, startArrayIndex = array->size, startChunkIndex = 0;
+	int64_t currentSubID = 0, startArrayIndex = array->size, startChunkIndex = 0;
 	GHashTable *cdcTable = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 	for (int i = 0; i < u->recipe->chunknum;) {
 		g_hash_table_remove_all(cdcTable);
@@ -331,8 +334,11 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 
 		// 插入到recipeList
 		sub->chunk_num = i - startChunkIndex;
-		sub->chunks = malloc(sizeof(struct chunkPointer) * sub->chunk_num);
-		memcpy(sub->chunks, u->chunks + startChunkIndex, sizeof(struct chunkPointer) * sub->chunk_num);
+		// sub->chunks = malloc(sizeof(struct chunkPointer) * sub->chunk_num);
+		// memcpy(sub->chunks, u->chunks + startChunkIndex, sizeof(struct chunkPointer) * sub->chunk_num);
+		sub->chunks = NULL;
+		assert(u->chunk_off % (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t)) == 0);
+		sub->chunk_off = u->chunk_off + startChunkIndex * (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t));
 
 		feature_table_insert(featureTable, subFeatures, array->size);
 		dynamic_array_add(array, sub);
@@ -367,6 +373,8 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 		if (!destor.upgrade_do_split_merge) {
 			feature_table_insert(featureTable, features, array->size);
 			dynamic_array_add(array, u);
+			free(u->chunks);
+			u->chunks = NULL;
 			continue;
 		}
 
@@ -404,6 +412,8 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 				cacheFeatures[i] = LLONG_MAX;
 			}
 			jcr.logic_recipe_unique_container += merge_unique_num;
+			free(u->chunks);
+			u->chunks = NULL;
 		} else if (unique_num > destor.CDC_max_size) {
 			WARNING("file %s Unique num %d exceed max size %d", u->recipe->filename, unique_num, destor.CDC_max_size);
 			CDC_recipe(array, featureTable, u);
@@ -415,6 +425,8 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 			feature_table_insert(featureTable, features, array->size);
 			dynamic_array_add(array, u);
 			jcr.logic_recipe_unique_container += unique_num;
+			free(u->chunks);
+			u->chunks = NULL;
 		}
 	}
 
@@ -435,7 +447,8 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 	assert(destor.upgrade_level == UPGRADE_SIMILARITY);
 	
 	struct fileRecipeMeta *r = unit->recipe;
-	struct chunkPointer *cp = unit->chunks;
+	assert(unit->chunks == NULL);
+	struct chunkPointer *cp = read_n_chunk_pointers(jcr.bv, unit->chunk_off, unit->chunk_num);
 
 	// 发送recipe
 	struct chunk *c = new_chunk(2 * sizeof(containerid) + sdslen(r->filename) + 1);
