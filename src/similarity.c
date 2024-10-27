@@ -392,6 +392,8 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 			}
 			
 			merge_unique_num = calculate_unique_container(u, cacheTable);
+			free(u->chunks);
+			u->chunks = NULL;
 			assert(merge_unique_num <= destor.CDC_max_size);
 			// 如果合并后的文件仍然小于最小容量, 则继续等待合并
 			if (merge_unique_num < destor.CDC_min_size) {
@@ -412,8 +414,6 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 				cacheFeatures[i] = LLONG_MAX;
 			}
 			jcr.logic_recipe_unique_container += merge_unique_num;
-			free(u->chunks);
-			u->chunks = NULL;
 		} else if (unique_num > destor.CDC_max_size) {
 			WARNING("file %s Unique num %d exceed max size %d", u->recipe->filename, unique_num, destor.CDC_max_size);
 			CDC_recipe(array, featureTable, u);
