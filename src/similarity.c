@@ -219,6 +219,7 @@ int compare_container_id(void *a, void *b) {
 
 static void feature_table_insert(GHashTable *featureTable[FEATURE_NUM], feature features[FEATURE_NUM], containerid recipeID) {
 	for (int i = 0; i < FEATURE_NUM; i++) {
+		assert(features[i] != ULONG_MAX);
 		struct featureList *list = g_hash_table_lookup(featureTable[i], &features[i]);
 		if (!list) {
 			list = malloc(sizeof(struct featureList));
@@ -243,7 +244,7 @@ static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
 
 	int i, j, k;
 	for (i = 0; i < FEATURE_NUM; i++) {
-		features[i] = LLONG_MAX;
+		features[i] = ULONG_MAX;
 	}
 
 	recipeUnit_t *unit = malloc(sizeof(recipeUnit_t));
@@ -297,7 +298,7 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 		// 创建新的recipeUnit
 		feature subFeatures[FEATURE_NUM];
 		for (int k = 0; k < FEATURE_NUM; k++) {
-			subFeatures[k] = LLONG_MAX;
+			subFeatures[k] = ULONG_MAX;
 		}
 		recipeUnit_t *sub = malloc(sizeof(recipeUnit_t));
 		sub->recipe = copy_file_recipe_meta(u->recipe);
@@ -411,7 +412,7 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 			cacheListHead = NULL;
 			cacheListTail = NULL;
 			for (int i = 0; i < FEATURE_NUM; i++) {
-				cacheFeatures[i] = LLONG_MAX;
+				cacheFeatures[i] = ULONG_MAX;
 			}
 			jcr.logic_recipe_unique_container += merge_unique_num;
 		} else if (unique_num > destor.CDC_max_size) {
@@ -461,7 +462,7 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 	count_cache_hit(cp, unit->chunk_num);
 
 	for (int k = 0; k < FEATURE_NUM; k++) {
-		featuresInLRU[k] = LLONG_MAX;
+		featuresInLRU[k] = ULONG_MAX;
 	}
 
 	for (int i = 0; i < unit->chunk_num; i++) {
@@ -555,7 +556,7 @@ void* read_similarity_recipe_thread(void *arg) {
 
 	// send recipes
 	struct lruCache *lru = new_lru_cache(destor.index_cache_size, free, compare_container_id);
-	feature featuresInLRU[FEATURE_NUM] = { LLONG_MAX, LLONG_MAX, LLONG_MAX, LLONG_MAX };
+	feature featuresInLRU[FEATURE_NUM] = { ULONG_MAX, ULONG_MAX, ULONG_MAX, ULONG_MAX };
 	GHashTable *sendedRecipe = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 	for (i = 0; i < recipe_num; i++) {
 		// 选择一个与当前缓存最相似的recipe
@@ -566,7 +567,7 @@ void* read_similarity_recipe_thread(void *arg) {
 		int64_t bestRecipeRef = -1;
 		for (j = 0; j < FEATURE_NUM && bestRecipeRef < FEATURE_NUM && i != 0; j++) {
 			feature f = featuresInLRU[j];
-			assert(f != LLONG_MAX);
+			assert(f != ULONG_MAX);
 			struct featureList *list = g_hash_table_lookup(featureTable[j], &f);
 			if (!list) continue;
 			assert(list->feature == f);
