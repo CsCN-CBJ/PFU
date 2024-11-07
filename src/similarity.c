@@ -461,10 +461,6 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 
 	count_cache_hit(cp, unit->chunk_num);
 
-	for (int k = 0; k < FEATURE_NUM; k++) {
-		featuresInLRU[k] = ULONG_MAX;
-	}
-
 	for (int i = 0; i < unit->chunk_num; i++) {
 		// 遍历recipe中所有chunk, 对其containerid进行特征计算
 		struct chunk* c = new_chunk(0);
@@ -519,6 +515,11 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 }
 
 void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLRU[FEATURE_NUM], struct lruCache *lru) {
+
+	for (int k = 0; k < FEATURE_NUM; k++) {
+		featuresInLRU[k] = ULONG_MAX;
+	}
+
 	if (unit->next) {
 		WARNING("Send merge recipe start");
 		while (unit) {
