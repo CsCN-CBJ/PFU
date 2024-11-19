@@ -376,7 +376,17 @@ enum openmode {
 	WRITE = 1,
 };
 
+struct AgentReader {
+    char* ptr;
+    size_t len;
+    size_t off;
+    int write;
+};
+
+typedef struct AgentReader* afd_t;
+
 struct hashfile_handle {
+	struct AgentReader* afd;
 	int 				fd;
 	enum openmode			omode;
 	struct header_v4		header;

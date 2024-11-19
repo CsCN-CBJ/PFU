@@ -29,8 +29,122 @@
 #include <math.h>
 #include <assert.h>
 #include <time.h>
+#include <sys/mman.h>
 
 #include "libhashfile.h"
+
+static long get_file_len(const char* filename) {
+	FILE* file = fopen(filename, "rb");
+	if (file == NULL) {
+		return -1;
+	}
+	fseek(file, 0, SEEK_END);  
+	long size = ftell(file);   
+	fclose(file);			  
+	return size;
+}
+
+static size_t len_fit(size_t nbytes, size_t len, size_t off) {
+	size_t maxn = len - off;
+	if (nbytes > maxn) {
+		nbytes = maxn;
+	}
+	return nbytes;
+}
+
+// Read NBYTES into BUF from FD. Return the
+// number read, -1 for errors or 0 for EOF.
+
+// This function is a cancellation point and therefore not marked with
+// __THROW.
+static ssize_t agent_read(afd_t afd, void* buf, size_t nbytes) {
+	size_t n = len_fit(nbytes, afd->len, afd->off);
+	memcpy(buf, afd->ptr + afd->off, n);
+	afd->off += n;
+	return n;
+}
+
+// Write N bytes of BUF to FD. Return the number written, or -1.
+
+// This function is a cancellation point and therefore not marked with
+// __THROW.
+static ssize_t agent_write(afd_t afd, const void* buf, size_t n) {
+	return fwrite(buf, 1, n, (FILE*)afd->ptr);
+}
+
+static off_t agent_lseek(afd_t afd, off_t offset, int whence) {
+	if (afd->write) {
+		return fseek((FILE*)afd->ptr, offset, whence);
+	}
+	size_t target;
+	switch (whence) {
+	case SEEK_SET:
+		target = offset;
+		break;
+	case SEEK_CUR:
+		target = afd->off + offset;
+		break;
+	case SEEK_END:
+		target = afd->len += offset;
+		break;
+	default:
+		printf("unknown agent_lseek whence: %d", whence);
+		return -1;
+	}
+	if (target > afd->len) {
+		printf("agent_lseek overflow");
+		return -1;
+	}
+	afd->off = target;
+	return afd->off;
+}
+
+static afd_t agent_open_ro(const char* path) {
+	long len = get_file_len(path);
+	if (len < 0) {
+		return NULL;
+	}
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		return NULL;
+	}
+	char* ptr = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0);
+	if (ptr == MAP_FAILED) {
+		printf("mmap fail!");
+		return NULL;
+	}
+	afd_t afd = malloc(sizeof(struct AgentReader));
+	afd->ptr = ptr;
+	afd->len = len;
+	afd->off = 0;
+	afd->write = 0;
+	return afd;
+}
+
+static afd_t agent_open_wo(const char* path) {
+	// int fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0666);
+	FILE* f = fopen(path, "wb");
+	if (!f) {
+		return NULL;
+	}
+	afd_t afd = malloc(sizeof(struct AgentReader));
+	afd->ptr = (char*)f;
+	afd->len = 0;
+	afd->off = 0;
+	afd->write = 1;
+	return afd;
+}
+
+static void agent_close(afd_t afd) {
+	if (afd) {
+		if (!afd->write) {
+			munmap(afd->ptr, afd->len);
+		} else {
+			fclose((FILE*)afd->ptr);
+		}
+		free(afd);
+	}
+}
 
 #define max2(a, b)	((a) > (b) ? (a) : (b))
 #define max(a, b, c)	(max2(max2(a, b), c))
@@ -39,8 +153,7 @@
 			sizeof(struct file_header_v3))
 
 static void convert_to_abstract_file_header(int version, uint8_t *fhdr,
-				struct abstract_file_header *header)
-{
+	struct abstract_file_header *header) {
 	struct file_header *fhdr1;
 	struct file_header_v2 *fhdr2;
 	struct file_header_v3 *fhdr4;
@@ -48,7 +161,7 @@ static void convert_to_abstract_file_header(int version, uint8_t *fhdr,
 
 	switch (version) {
 	case HASH_FILE_VERSION1:
-		fhdr1 = (struct file_header *)fhdr;
+		fhdr1 = (struct file_header*)fhdr;
 		header->file_size = fhdr1->file_size;
 		header->chunks = fhdr1->chunks;
 		header->pathlen = strlen(fhdr1->path);
@@ -56,14 +169,14 @@ static void convert_to_abstract_file_header(int version, uint8_t *fhdr,
 		break;
 	case HASH_FILE_VERSION2:
 	case HASH_FILE_VERSION3:
-		fhdr2 = (struct file_header_v2 *)fhdr;
+		fhdr2 = (struct file_header_v2*)fhdr;
 		header->file_size = fhdr2->file_size;
 		header->chunks = fhdr2->chunks;
 		header->pathlen = fhdr2->pathlen;
 		/* not copying path here */
 		break;
 	case HASH_FILE_VERSION4:
-		fhdr4 = (struct file_header_v3 *)fhdr;
+		fhdr4 = (struct file_header_v3*)fhdr;
 		header->file_size = fhdr4->file_size;
 		header->uid = fhdr4->uid;
 		header->gid = fhdr4->gid;
@@ -82,7 +195,7 @@ static void convert_to_abstract_file_header(int version, uint8_t *fhdr,
 	case HASH_FILE_VERSION5:
 	case HASH_FILE_VERSION6:
 	case HASH_FILE_VERSION7:
-		fhdr5 = (struct file_header_v4 *)fhdr;
+		fhdr5 = (struct file_header_v4*)fhdr;
 		header->file_size = fhdr5->file_size;
 		header->blocks = fhdr5->blocks;
 		header->uid = fhdr5->uid;
@@ -104,8 +217,7 @@ static void convert_to_abstract_file_header(int version, uint8_t *fhdr,
 	}
 }
 
-static inline int version_supported(uint32_t version)
-{
+static inline int version_supported(uint32_t version) {
 	if (version == HASH_FILE_VERSION1 ||
 		version == HASH_FILE_VERSION2 ||
 		version == HASH_FILE_VERSION3 ||
@@ -119,7 +231,7 @@ static inline int version_supported(uint32_t version)
 
 struct hashfile_handle *hashfile_open(char *hashfile_name)
 {
-	int fd;
+	afd_t afd;
 	int ret;
 	struct hashfile_handle *handle;
 	int saved_errno = 0;
@@ -128,8 +240,8 @@ struct hashfile_handle *hashfile_open(char *hashfile_name)
 	if (!handle)
 		goto out;
 
-	fd = open(hashfile_name, O_RDONLY);
-	if (fd < 0) {
+	afd = agent_open_ro(hashfile_name);
+	if (!afd) {
 		saved_errno = errno;
 		goto free_handle;
 	}
@@ -139,7 +251,7 @@ struct hashfile_handle *hashfile_open(char *hashfile_name)
 	 * Additional fields are read later if needed (for newer versions).
 	 * We enforce that new fields must be added in the end of the header.
 	 */
-	ret = read(fd, &handle->header, sizeof(struct header));
+	ret = agent_read(afd, &handle->header, sizeof(struct header));
 	if (ret != sizeof(struct header)) {
 		if (ret >= 0)
 			saved_errno = EAGAIN;
@@ -164,13 +276,13 @@ struct hashfile_handle *hashfile_open(char *hashfile_name)
 	 * For simplicity, just re-read whole header again.
 	 */
 	if (handle->header.version >= HASH_FILE_VERSION5) {
-		ret = lseek(fd, 0, SEEK_SET);
+		ret = agent_lseek(afd, 0, SEEK_SET);
 		if (ret == -1) {
 			saved_errno = errno;
 			goto close_file;
 		}
 
-		ret = read(fd, &handle->header, sizeof(struct header_v4));
+		ret = agent_read(afd, &handle->header, sizeof(struct header_v4));
 		if (ret != sizeof(struct header_v4)) {
 			if (ret >= 0)
 				saved_errno = EAGAIN;
@@ -179,13 +291,13 @@ struct hashfile_handle *hashfile_open(char *hashfile_name)
 			goto close_file;
 		}
 	} else if (handle->header.version >= HASH_FILE_VERSION3) {
-		ret = lseek(fd, 0, SEEK_SET);
+		ret = agent_lseek(afd, 0, SEEK_SET);
 		if (ret == -1) {
 			saved_errno = errno;
 			goto close_file;
 		}
 
-		ret = read(fd, &handle->header, sizeof(struct header_v3));
+		ret = agent_read(afd, &handle->header, sizeof(struct header_v3));
 		if (ret != sizeof(struct header_v3)) {
 			if (ret >= 0)
 				saved_errno = EAGAIN;
@@ -196,13 +308,13 @@ struct hashfile_handle *hashfile_open(char *hashfile_name)
 	}
 
 	handle->omode = READ;
-	handle->fd = fd;
+	handle->afd = afd;
 	handle->num_files_processed = 0;
 	handle->num_hashes_processed_current_file = 0;
 	handle->current_file.chunks = 0;
 
 	handle->current_chunk_info.hash =
-			(uint8_t *)malloc(handle->header.hash_size / 8);
+		(uint8_t*)malloc(handle->header.hash_size / 8);
 	if (!handle->current_chunk_info.hash) {
 		saved_errno = errno;
 		goto close_file;
@@ -211,7 +323,7 @@ struct hashfile_handle *hashfile_open(char *hashfile_name)
 	return handle;
 
 close_file:
-	close(fd);
+	agent_close(afd);
 free_handle:
 	free(handle);
 	errno = saved_errno;
@@ -220,37 +332,35 @@ out:
 }
 
 struct hashfile_handle *hashfile_open4write(char *hashfile_name, enum
-			chnking_method cmeth, enum hshing_method hmeth,
-			uint32_t hash_size, const char *root_path)
+	chnking_method cmeth, enum hshing_method hmeth,
+	uint32_t hash_size, const char *root_path)
 {
-	int fd;
+	afd_t afd;
 	int ret;
 	struct hashfile_handle *handle;
 	int saved_errno;
 	struct utsname utsn;
 	time_t curtime;
 
-	handle = (struct hashfile_handle *)malloc(sizeof(*handle));
+	handle = (struct hashfile_handle*)malloc(sizeof(*handle));
 	if (!handle)
 		goto out;
 
-	handle->current_chunk_info.hash = (uint8_t *)malloc(hash_size / 8);
+	handle->current_chunk_info.hash = (uint8_t*)malloc(hash_size / 8);
 	if (!handle->current_chunk_info.hash) {
 		saved_errno = errno;
 		goto free_handle;
 	}
 
-	fd = open(hashfile_name, O_CREAT | O_EXCL | O_WRONLY,
-			S_IWUSR | S_IRUSR | S_IRGRP | S_IWGRP
-				| S_IROTH | S_IWOTH);
-	if (fd < 0) {
+	afd = agent_open_wo(hashfile_name);
+	if (!afd) {
 		saved_errno = errno;
 		goto free_hash;
 	}
 
 	/* setting handle fields */
 	handle->omode = WRITE;
-	handle->fd = fd;
+	handle->afd = afd;
 	handle->num_files_processed = 0;
 	handle->num_hashes_processed_current_file = 0;
 
@@ -266,7 +376,7 @@ struct hashfile_handle *hashfile_open4write(char *hashfile_name, enum
 
 	/* saving the real root path */
 	strncpy(handle->header.path_root, root_path,
-			sizeof(handle->header.path_root));
+		sizeof(handle->header.path_root));
 
 	/* saving the system id */
 	ret = uname(&utsn);
@@ -276,8 +386,8 @@ struct hashfile_handle *hashfile_open4write(char *hashfile_name, enum
 	}
 
 	snprintf(handle->header.sysid, MAX_SYSID_LEN,
-			 "%s %s %s %s", utsn.sysname, utsn.release,
-					 utsn.machine, utsn.nodename);
+		"%s %s %s %s", utsn.sysname, utsn.release,
+		utsn.machine, utsn.nodename);
 
 	/* saving the start time */
 	curtime = time(NULL);
@@ -292,7 +402,7 @@ struct hashfile_handle *hashfile_open4write(char *hashfile_name, enum
 	 * writing the main header. it will be overwritten in
 	 * hashfile_close() to reflect the file/chunk counters.
 	 */
-	ret = write(handle->fd, &handle->header, sizeof(handle->header));
+	ret = agent_write(handle->afd, &handle->header, sizeof(handle->header));
 	if (ret != sizeof(handle->header)) {
 		if (ret < 0)
 			saved_errno = errno;
@@ -305,7 +415,7 @@ struct hashfile_handle *hashfile_open4write(char *hashfile_name, enum
 	return handle;
 
 close_file:
-	close(fd);
+	agent_close(afd);
 free_hash:
 	free(handle->current_chunk_info.hash);
 free_handle:
@@ -316,8 +426,7 @@ out:
 }
 
 int hashfile_set_fxd_chnking_params(struct hashfile_handle *handle,
-					struct fixed_chnking_params *params)
-{
+	struct fixed_chnking_params *params) {
 	if (handle->omode != WRITE) {
 		errno = EBADF;
 		return -1;
@@ -329,14 +438,13 @@ int hashfile_set_fxd_chnking_params(struct hashfile_handle *handle,
 	}
 
 	memcpy(&handle->header.chnk_method_params.fixed_params,
-					 params, sizeof(*params));
+		params, sizeof(*params));
 
 	return 0;
 }
 
 int hashfile_set_var_chnking_params(struct hashfile_handle *handle,
-						struct var_chnking_params *params)
-{
+	struct var_chnking_params *params) {
 	if (handle->omode != WRITE) {
 		errno = EBADF;
 		return -1;
@@ -348,7 +456,7 @@ int hashfile_set_var_chnking_params(struct hashfile_handle *handle,
 	}
 
 	memcpy(&handle->header.chnk_method_params.var_params,
-					 params, sizeof(*params));
+		params, sizeof(*params));
 
 	return 0;
 }
@@ -371,89 +479,79 @@ const char *hashfile_sysid(struct hashfile_handle *handle)
 		return NULL;
 }
 
-uint64_t hashfile_start_time(struct hashfile_handle *handle)
-{
+uint64_t hashfile_start_time(struct hashfile_handle *handle) {
 	if (handle->header.version >= HASH_FILE_VERSION3)
 		return handle->header.start_time;
 	else
 		return 0;
 }
 
-uint64_t hashfile_end_time(struct hashfile_handle *handle)
-{
+uint64_t hashfile_end_time(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION3)
 		return handle->header.end_time;
 	else
 		return 0;
 }
 
-uint64_t hashfile_numfiles(struct hashfile_handle *handle)
-{
+uint64_t hashfile_numfiles(struct hashfile_handle* handle) {
 	return handle->header.files;
 }
 
-uint64_t hashfile_numchunks(struct hashfile_handle *handle)
-{
+uint64_t hashfile_numchunks(struct hashfile_handle* handle) {
 	return handle->header.chunks;
 }
 
-uint32_t hashfile_hash_size(struct hashfile_handle *handle)
-{
+uint32_t hashfile_hash_size(struct hashfile_handle* handle) {
 	return handle->header.hash_size;
 }
 
-uint64_t hashfile_numbytes(struct hashfile_handle *handle)
-{
+uint64_t hashfile_numbytes(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION5)
 		return handle->header.bytes;
 	else
 		return 0;
 }
 
-enum chnking_method hashfile_chunking_method(struct hashfile_handle *handle)
-{
+enum chnking_method hashfile_chunking_method(struct hashfile_handle* handle) {
 	return handle->header.chnk_method;
 }
 
-int hashfile_fxd_chunking_params(struct hashfile_handle *handle,
-					struct fixed_chnking_params *params)
-{
+int hashfile_fxd_chunking_params(struct hashfile_handle* handle,
+	struct fixed_chnking_params* params) {
 	if (handle->header.chnk_method != FIXED) {
 		errno = EINVAL;
 		return -1;
 	}
 
 	memcpy(params, &handle->header.chnk_method_params.fixed_params,
-					  sizeof(*params));
+		sizeof(*params));
 
 	return 0;
 }
 
-int hashfile_var_chunking_params(struct hashfile_handle *handle,
-						struct var_chnking_params *params)
-{
+int hashfile_var_chunking_params(struct hashfile_handle* handle,
+	struct var_chnking_params* params) {
 	if (handle->header.chnk_method != VARIABLE) {
 		errno = EINVAL;
 		return -1;
 	}
 
 	memcpy(params, &handle->header.chnk_method_params.var_params,
-					 sizeof(*params));
+		sizeof(*params));
 
 	return 0;
 }
 
-int hashfile_chunking_method_str(struct hashfile_handle *handle,
-					char *buf, int size)
-{
+int hashfile_chunking_method_str(struct hashfile_handle* handle,
+	char* buf, int size) {
 	switch (handle->header.chnk_method) {
 	case FIXED:
 		snprintf(buf, size, "Fixed-%d\n",
-					handle->header.chnk_method_params.
-					fixed_params.chunk_size);
+			handle->header.chnk_method_params.
+			fixed_params.chunk_size);
 		break;
 	case VARIABLE:
-		switch(handle->header.chnk_method_params.var_params.algo) {
+		switch (handle->header.chnk_method_params.var_params.algo) {
 		case RANDOM:
 			snprintf(buf, size, "Variable-random, p=%Lf",
 				handle->header.chnk_method_params.
@@ -469,7 +567,7 @@ int hashfile_chunking_method_str(struct hashfile_handle *handle,
 			break;
 		case RABIN:
 			snprintf(buf, size, "Variable-rabin bits=%d, "
-				 "pattern=%" PRIx64 ", Window size=%d",
+				"pattern=%" PRIx64 ", Window size=%d",
 				handle->header.chnk_method_params.var_params.
 				algo_params.rabin_params.bits_to_compare,
 				handle->header.chnk_method_params.var_params.
@@ -483,10 +581,10 @@ int hashfile_chunking_method_str(struct hashfile_handle *handle,
 		}
 
 		snprintf(buf + strlen(buf), size - strlen(buf),
-			 "[%d:%d]\n", handle->header.chnk_method_params.
-				var_params.min_csize,
-				handle->header.chnk_method_params.
-				var_params.max_csize);
+			"[%d:%d]\n", handle->header.chnk_method_params.
+			var_params.min_csize,
+			handle->header.chnk_method_params.
+			var_params.max_csize);
 		break;
 	default:
 		errno = EINVAL;
@@ -496,15 +594,13 @@ int hashfile_chunking_method_str(struct hashfile_handle *handle,
 	return 0;
 }
 
-enum hshing_method hashfile_hashing_method(struct hashfile_handle *handle)
-{
+enum hshing_method hashfile_hashing_method(struct hashfile_handle* handle) {
 	return handle->header.hsh_method;
 }
 
-int hashfile_hashing_method_str(struct hashfile_handle *handle,
-				char *buf, int size)
-{
-	switch(handle->header.hsh_method) {
+int hashfile_hashing_method_str(struct hashfile_handle* handle,
+	char* buf, int size) {
+	switch (handle->header.hsh_method) {
 	case MD5_HASH:
 	case MD5_48BIT_HASH:
 		snprintf(buf, size, "MD5-%d\n", handle->header.hash_size);
@@ -526,8 +622,7 @@ int hashfile_hashing_method_str(struct hashfile_handle *handle,
 	return 0;
 }
 
-static uint64_t skip_over_current_file_hashes(struct hashfile_handle *handle)
-{
+static int64_t skip_over_current_file_hashes(struct hashfile_handle* handle) {
 	uint64_t skip_chunk_count;
 	uint64_t chunk_info_block_size;
 	uint64_t ret;
@@ -538,19 +633,19 @@ static uint64_t skip_over_current_file_hashes(struct hashfile_handle *handle)
 		if (handle->header.version >= HASH_FILE_VERSION7)
 			chunk_info_block_size += CHUNK_SIZE_32BIT;
 		else if (handle->header.version >= HASH_FILE_VERSION3)
-			chunk_info_block_size +=CHUNK_SIZE_64BIT;
+			chunk_info_block_size += CHUNK_SIZE_64BIT;
 	}
 
 	if (handle->header.version >= HASH_FILE_VERSION6)
 		chunk_info_block_size +=
-			sizeof(handle->current_chunk_info.cratio);
+		sizeof(handle->current_chunk_info.cratio);
 
 	skip_chunk_count = handle->current_file.chunks -
-				 handle->num_hashes_processed_current_file;
+		handle->num_hashes_processed_current_file;
 
-	ret = lseek(handle->fd,
-			 skip_chunk_count * chunk_info_block_size,
-			 SEEK_CUR);
+	ret = agent_lseek(handle->afd,
+		skip_chunk_count * chunk_info_block_size,
+		SEEK_CUR);
 	return ret;
 }
 
@@ -560,12 +655,11 @@ static uint64_t skip_over_current_file_hashes(struct hashfile_handle *handle)
  * 0 indicates EOF, 1 indicates success and < 0 indicates error -- typical
  * cases of read system call.
  */
-int hashfile_next_file(struct hashfile_handle *handle)
-{
+int hashfile_next_file(struct hashfile_handle* handle) {
 	uint8_t file_header[FILE_HEADER_SIZE];
 	int size;
 	int ret;
-	uint64_t skip_ret;
+	int64_t skip_ret;
 
 	if (handle->omode != READ) {
 		errno = EBADF;
@@ -590,8 +684,8 @@ int hashfile_next_file(struct hashfile_handle *handle)
 	handle->num_hashes_processed_current_file = handle->current_file.chunks;
 
 	if (handle->header.version == HASH_FILE_VERSION5 ||
-			handle->header.version == HASH_FILE_VERSION6 ||
-			handle->header.version == HASH_FILE_VERSION7)
+		handle->header.version == HASH_FILE_VERSION6 ||
+		handle->header.version == HASH_FILE_VERSION7)
 		size = sizeof(struct file_header_v4);
 	else if (handle->header.version == HASH_FILE_VERSION4)
 		size = sizeof(struct file_header_v3);
@@ -604,7 +698,7 @@ int hashfile_next_file(struct hashfile_handle *handle)
 		assert(0);
 	}
 
-	ret = read(handle->fd, file_header, size);
+	ret = agent_read(handle->afd, file_header, size);
 	if (ret != size) {
 		if (ret >= 0) {
 			errno = EAGAIN;
@@ -614,11 +708,11 @@ int hashfile_next_file(struct hashfile_handle *handle)
 	}
 
 	convert_to_abstract_file_header(handle->header.version,
-					file_header, &handle->current_file);
+		file_header, &handle->current_file);
 
 	if (handle->header.version >= HASH_FILE_VERSION2) {
-		ret = read(handle->fd, handle->current_file.path,
-					handle->current_file.pathlen);
+		ret = agent_read(handle->afd, handle->current_file.path,
+			handle->current_file.pathlen);
 		if (ret != handle->current_file.pathlen) {
 			if (ret >= 0) {
 				errno = EAGAIN;
@@ -629,9 +723,9 @@ int hashfile_next_file(struct hashfile_handle *handle)
 		handle->current_file.path[handle->current_file.pathlen] = '\0';
 
 		if (handle->header.version >= HASH_FILE_VERSION4 &&
-					S_ISLNK(handle->current_file.perm)) {
-			ret = read(handle->fd, handle->current_file.target_path,
-					handle->current_file.target_pathlen);
+			S_ISLNK(handle->current_file.perm)) {
+			ret = agent_read(handle->afd, handle->current_file.target_path,
+				handle->current_file.target_pathlen);
 			if (ret != handle->current_file.target_pathlen) {
 				if (ret >= 0) {
 					errno = EAGAIN;
@@ -652,10 +746,9 @@ out:
 	return ret;
 }
 
-static int do_add_file(struct hashfile_handle *handle, const char *file_path,
-			const struct stat *stat_buf, const char *target_path,
-				 int only_finilize)
-{
+static int do_add_file(struct hashfile_handle* handle, const char* file_path,
+	const struct stat* stat_buf, const char* target_path,
+	int only_finilize) {
 	struct file_header_v4 fheader;
 	off_t cur_offset;
 	off_t offset_ret;
@@ -664,12 +757,12 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 	/* finalize previous file */
 	if (handle->num_files_processed > 0) {
 		/* saving current position in the hash file */
-		cur_offset = lseek(handle->fd, 0, SEEK_CUR);
+		cur_offset = agent_lseek(handle->afd, 0, SEEK_CUR);
 		if (cur_offset == (off_t)-1)
 			return -1;
 
 		/* seeking to the previous file's header position */
-		offset_ret = lseek(handle->fd,
+		offset_ret = agent_lseek(handle->afd,
 			handle->current_file_header_offset, SEEK_SET);
 		if (offset_ret == (off_t)-1)
 			return -1;
@@ -692,7 +785,7 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 		fheader.target_pathlen = handle->current_file.target_pathlen;
 
 		/* writing the real header */
-		ret = write(handle->fd, &fheader, sizeof(fheader));
+		ret = agent_write(handle->afd, &fheader, sizeof(fheader));
 		if (ret != sizeof(fheader)) {
 			if (ret >= 0)
 				errno = EAGAIN;
@@ -700,8 +793,8 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 		}
 
 		/* writing the file path */
-		ret = write(handle->fd, handle->current_file.path,
-					handle->current_file.pathlen);
+		ret = agent_write(handle->afd, handle->current_file.path,
+			handle->current_file.pathlen);
 		if (ret != handle->current_file.pathlen) {
 			if (ret >= 0)
 				errno = EAGAIN;
@@ -710,9 +803,9 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 
 		/* writing target path in case of symlink */
 		if (handle->current_file.target_pathlen) {
-			ret = write(handle->fd,
-					handle->current_file.target_path,
-					handle->current_file.target_pathlen);
+			ret = agent_write(handle->afd,
+				handle->current_file.target_path,
+				handle->current_file.target_pathlen);
 			if (ret != handle->current_file.target_pathlen) {
 				if (ret >= 0)
 					errno = EAGAIN;
@@ -721,8 +814,8 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 		}
 
 		/* seeking back to new file's header position and saving it */
-		handle->current_file_header_offset = lseek(handle->fd,
-						cur_offset, SEEK_SET);
+		handle->current_file_header_offset = agent_lseek(handle->afd,
+			cur_offset, SEEK_SET);
 		if (handle->current_file_header_offset == (off_t)-1)
 			return -1;
 	}
@@ -774,7 +867,7 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 	fheader.target_pathlen = handle->current_file.target_pathlen;
 
 	/* saving current's file header offset */
-	handle->current_file_header_offset = lseek(handle->fd, 0, SEEK_CUR);
+	handle->current_file_header_offset = agent_lseek(handle->afd, 0, SEEK_CUR);
 	if (handle->current_file_header_offset == (off_t)-1)
 		return -1;
 
@@ -783,7 +876,7 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 	 * the header will be overwritten later when
 	 * the file is finalized.
 	 */
-	ret = write(handle->fd, &fheader, sizeof(fheader));
+	ret = agent_write(handle->afd, &fheader, sizeof(fheader));
 	if (ret != sizeof(fheader)) {
 		if (ret >= 0)
 			errno = EAGAIN;
@@ -791,8 +884,8 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 	}
 
 	/* writing the file path */
-	ret = write(handle->fd, handle->current_file.path,
-				handle->current_file.pathlen);
+	ret = agent_write(handle->afd, handle->current_file.path,
+		handle->current_file.pathlen);
 	if (ret != handle->current_file.pathlen) {
 		if (ret >= 0)
 			errno = EAGAIN;
@@ -801,8 +894,8 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 
 	/* writing target path in case of symlink */
 	if (S_ISLNK(handle->current_file.perm)) {
-		ret = write(handle->fd, handle->current_file.target_path,
-					handle->current_file.target_pathlen);
+		ret = agent_write(handle->afd, handle->current_file.target_path,
+			handle->current_file.target_pathlen);
 		if (ret != handle->current_file.target_pathlen) {
 			if (ret >= 0)
 				errno = EAGAIN;
@@ -813,10 +906,9 @@ static int do_add_file(struct hashfile_handle *handle, const char *file_path,
 	return 0;
 }
 
-int hashfile_add_file(struct hashfile_handle *handle,
-			const char *file_path, const struct stat *stat_buf,
-				const char *target_path)
-{
+int hashfile_add_file(struct hashfile_handle* handle,
+	const char* file_path, const struct stat* stat_buf,
+	const char* target_path) {
 	if (handle->omode != WRITE) {
 		errno = EBADF;
 		return -1;
@@ -825,8 +917,7 @@ int hashfile_add_file(struct hashfile_handle *handle,
 	return do_add_file(handle, file_path, stat_buf, target_path, 0);
 }
 
-void hashfile_close(struct hashfile_handle *handle)
-{
+void hashfile_close(struct hashfile_handle* handle) {
 	time_t curtime;
 	int ret;
 
@@ -843,9 +934,9 @@ void hashfile_close(struct hashfile_handle *handle)
 		/* handle->header.chunks is already updated as needed */
 		handle->header.files = handle->num_files_processed;
 
-		lseek(handle->fd, 0, SEEK_SET);
-		ret = write(handle->fd, &handle->header,
-					sizeof(handle->header));
+		agent_lseek(handle->afd, 0, SEEK_SET);
+		ret = agent_write(handle->afd, &handle->header,
+			sizeof(handle->header));
 		if (ret != sizeof(handle->header)) {
 			/*
 			 * something bad happened on write,
@@ -856,12 +947,11 @@ void hashfile_close(struct hashfile_handle *handle)
 	}
 
 	free(handle->current_chunk_info.hash);
-	close(handle->fd);
+	agent_close(handle->afd);
 	free(handle);
 }
 
-const struct chunk_info *hashfile_next_chunk(struct hashfile_handle *handle)
-{
+const struct chunk_info* hashfile_next_chunk(struct hashfile_handle* handle) {
 	int ret;
 
 	if (handle->omode != READ) {
@@ -870,16 +960,16 @@ const struct chunk_info *hashfile_next_chunk(struct hashfile_handle *handle)
 	}
 
 	if (handle->current_file.chunks ==
-			 handle->num_hashes_processed_current_file)
+		handle->num_hashes_processed_current_file)
 		return NULL;
 
 	assert(handle->num_hashes_processed_current_file <
-						 handle->current_file.chunks);
+		handle->current_file.chunks);
 
 	if (handle->header.version >= HASH_FILE_VERSION7 &&
 		handle->header.chnk_method == VARIABLE) {
-		ret = read(handle->fd, &handle->current_chunk_info.size,
-			 CHUNK_SIZE_32BIT);
+		ret = agent_read(handle->afd, &handle->current_chunk_info.size,
+			CHUNK_SIZE_32BIT);
 		if (ret != CHUNK_SIZE_32BIT) {
 			if (ret >= 0)
 				errno = EAGAIN;
@@ -887,8 +977,8 @@ const struct chunk_info *hashfile_next_chunk(struct hashfile_handle *handle)
 		}
 	} else if (handle->header.version >= HASH_FILE_VERSION3 &&
 		handle->header.chnk_method == VARIABLE) {
-		ret = read(handle->fd, &handle->current_chunk_info.size,
-			 CHUNK_SIZE_64BIT);
+		ret = agent_read(handle->afd, &handle->current_chunk_info.size,
+			CHUNK_SIZE_64BIT);
 		if (ret != CHUNK_SIZE_64BIT) {
 			if (ret >= 0)
 				errno = EAGAIN;
@@ -896,16 +986,16 @@ const struct chunk_info *hashfile_next_chunk(struct hashfile_handle *handle)
 		}
 	} else if (handle->header.chnk_method == FIXED) {
 		if (handle->current_file.chunks - 1 ==
-			 handle->num_hashes_processed_current_file) {
-				/* Last chunk */
-				handle->current_chunk_info.size =
+			handle->num_hashes_processed_current_file) {
+			/* Last chunk */
+			handle->current_chunk_info.size =
 				handle->current_file.file_size -
 				(handle->current_file.chunks - 1) *
 				handle->header.chnk_method_params.fixed_params.chunk_size;
-				/* Detect if tail was on or off */
-				handle->current_chunk_info.size =
+			/* Detect if tail was on or off */
+			handle->current_chunk_info.size =
 				(handle->current_chunk_info.size >
-				handle->header.chnk_method_params.fixed_params.chunk_size)
+					handle->header.chnk_method_params.fixed_params.chunk_size)
 				? handle->header.chnk_method_params.fixed_params.chunk_size :
 				handle->current_chunk_info.size;
 		} else {
@@ -920,8 +1010,8 @@ const struct chunk_info *hashfile_next_chunk(struct hashfile_handle *handle)
 		handle->current_chunk_info.size = 0;
 	}
 
-	ret = read(handle->fd, handle->current_chunk_info.hash,
-			 handle->header.hash_size / 8);
+	ret = agent_read(handle->afd, handle->current_chunk_info.hash,
+		handle->header.hash_size / 8);
 	if (ret != handle->header.hash_size / 8) {
 		if (ret >= 0)
 			errno = EAGAIN;
@@ -929,8 +1019,8 @@ const struct chunk_info *hashfile_next_chunk(struct hashfile_handle *handle)
 	}
 
 	if (handle->header.version >= HASH_FILE_VERSION6) {
-		ret = read(handle->fd, &handle->current_chunk_info.cratio,
-			 sizeof(handle->current_chunk_info.cratio));
+		ret = agent_read(handle->afd, &handle->current_chunk_info.cratio,
+			sizeof(handle->current_chunk_info.cratio));
 		if (ret != sizeof(handle->current_chunk_info.cratio)) {
 			if (ret >= 0)
 				errno = EAGAIN;
@@ -947,9 +1037,8 @@ const struct chunk_info *hashfile_next_chunk(struct hashfile_handle *handle)
 	return &handle->current_chunk_info;
 }
 
-int hashfile_add_chunk(struct hashfile_handle *handle,
-				 const struct chunk_info *ci)
-{
+int hashfile_add_chunk(struct hashfile_handle* handle,
+	const struct chunk_info* ci) {
 	int ret;
 
 	if (handle->omode != WRITE) {
@@ -958,7 +1047,7 @@ int hashfile_add_chunk(struct hashfile_handle *handle,
 	}
 
 	if (handle->header.chnk_method == VARIABLE) {
-		ret = write(handle->fd, &ci->size, CHUNK_SIZE_32BIT);
+		ret = agent_write(handle->afd, &ci->size, CHUNK_SIZE_32BIT);
 		if (ret != CHUNK_SIZE_32BIT) {
 			if (ret >= 0)
 				errno = EAGAIN;
@@ -966,14 +1055,14 @@ int hashfile_add_chunk(struct hashfile_handle *handle,
 		}
 	}
 
-	ret = write(handle->fd, ci->hash, handle->header.hash_size / 8);
+	ret = agent_write(handle->afd, ci->hash, handle->header.hash_size / 8);
 	if (ret != handle->header.hash_size / 8) {
 		if (ret >= 0)
 			errno = EAGAIN;
 		return -1;
 	}
 
-	ret = write(handle->fd, &ci->cratio, sizeof(ci->cratio));
+	ret = agent_write(handle->afd, &ci->cratio, sizeof(ci->cratio));
 	if (ret != sizeof(ci->cratio)) {
 		if (ret >= 0)
 			errno = EAGAIN;
@@ -990,102 +1079,88 @@ int hashfile_add_chunk(struct hashfile_handle *handle,
 	return 0;
 }
 
-const char *hashfile_curfile_path(struct hashfile_handle *handle)
-{
+const char* hashfile_curfile_path(struct hashfile_handle* handle) {
 	return handle->current_file.path;
 }
 
-uint64_t hashfile_curfile_numchunks(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_numchunks(struct hashfile_handle* handle) {
 	return handle->current_file.chunks;
 }
 
-uint32_t hashfile_curfile_uid(struct hashfile_handle *handle)
-{
+uint32_t hashfile_curfile_uid(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.uid;
 	else
 		return 0;
 }
 
-uint32_t hashfile_curfile_gid(struct hashfile_handle *handle)
-{
+uint32_t hashfile_curfile_gid(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.gid;
 	else
 		return 0;
 }
 
-uint64_t hashfile_curfile_perm(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_perm(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.perm;
 	else
 		return 0;
 }
 
-uint64_t hashfile_curfile_atime(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_atime(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.atime;
 	else
 		return 0;
 }
 
-uint64_t hashfile_curfile_mtime(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_mtime(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.mtime;
 	else
 		return 0;
 }
 
-uint64_t hashfile_curfile_ctime(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_ctime(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.ctime;
 	else
 		return 0;
 }
 
-uint64_t hashfile_curfile_hardlinks(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_hardlinks(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.hardlinks;
 	else
 		return 0;
 }
 
-uint64_t hashfile_curfile_deviceid(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_deviceid(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.deviceid;
 	else
 		return 0;
 }
 
-uint64_t hashfile_curfile_inodenum(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_inodenum(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4)
 		return handle->current_file.inodenum;
 	else
 		return 0;
 }
 
-uint64_t hashfile_curfile_size(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_size(struct hashfile_handle* handle) {
 	return handle->current_file.file_size;
 }
 
-uint64_t hashfile_curfile_blocks(struct hashfile_handle *handle)
-{
+uint64_t hashfile_curfile_blocks(struct hashfile_handle* handle) {
 	return handle->current_file.blocks;
 }
 
-char *hashfile_curfile_linkpath(struct hashfile_handle *handle)
-{
+char* hashfile_curfile_linkpath(struct hashfile_handle* handle) {
 	if (handle->header.version >= HASH_FILE_VERSION4
-				&& S_ISLNK(handle->current_file.perm)) {
+		&& S_ISLNK(handle->current_file.perm)) {
 		return handle->current_file.target_path;
 	} else
 		return NULL;
@@ -1095,8 +1170,7 @@ char *hashfile_curfile_linkpath(struct hashfile_handle *handle)
  * used when there are multiple scans of hash file are required
  * (e.g. bloomfilter). Useful, rather than opening and closing the file.
  */
-int hashfile_reset(struct hashfile_handle *handle)
-{
+int hashfile_reset(struct hashfile_handle* handle) {
 	int ret;
 
 	if (handle->omode != READ) {
@@ -1105,7 +1179,7 @@ int hashfile_reset(struct hashfile_handle *handle)
 	}
 
 	/* Skip over the initial global header */
-	ret = lseek(handle->fd, sizeof(handle->header), SEEK_SET);
+	ret = agent_lseek(handle->afd, sizeof(handle->header), SEEK_SET);
 	if (ret == -1)
 		return ret;
 
