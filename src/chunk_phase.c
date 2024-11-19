@@ -3,6 +3,7 @@
 #include "chunking/chunking.h"
 #include "backup.h"
 #include "storage/containerstore.h"
+#include <zstd.h>
 
 static pthread_t chunk_t;
 static int64_t chunk_num;
@@ -25,6 +26,7 @@ static void* chunk_thread(void *arg) {
 	unsigned char *zeros = malloc(destor.chunk_max_size);
 	bzero(zeros, destor.chunk_max_size);
 	unsigned char *data = malloc(destor.chunk_max_size);
+	unsigned char *compress_buf = malloc(destor.chunk_max_size);
 
 	struct chunk* c = NULL;
 
@@ -76,10 +78,18 @@ static void* chunk_thread(void *arg) {
 
 			TIMER_END(1, jcr.chunk_time);
 
-			struct chunk *nc = new_chunk(chunk_size);
-			memcpy(nc->data, leftbuf + leftoff, chunk_size);
+			// compress the chunk
+			jcr.origin_data_size += chunk_size;
+			size_t compressed_size = ZSTD_compress(compress_buf, destor.chunk_max_size, leftbuf + leftoff, chunk_size, ZSTD_CLEVEL_DEFAULT);
 			leftlen -= chunk_size;
 			leftoff += chunk_size;
+			chunk_size = compressed_size;
+			if (ZSTD_isError(compressed_size)) {
+				WARNING("ZSTD compression error: %s", ZSTD_getErrorName(compressed_size));
+				exit(1);
+			}
+			struct chunk *nc = new_chunk(chunk_size);
+			memcpy(nc->data, compress_buf, chunk_size);
 
 			if (memcmp(zeros, nc->data, chunk_size) == 0) {
 				VERBOSE("Chunk phase: %ldth chunk  of %d zero bytes",
@@ -106,6 +116,7 @@ static void* chunk_thread(void *arg) {
 	free(leftbuf);
 	free(zeros);
 	free(data);
+	free(compress_buf);
 	return NULL;
 }
 

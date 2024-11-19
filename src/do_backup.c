@@ -71,7 +71,9 @@ void do_backup(char *path) {
 	printf("number of chunks: %" PRId32 " (%" PRId64 " bytes on average)\n", jcr.chunk_num,
 			jcr.data_size / jcr.chunk_num);
 	printf("number of unique chunks: %" PRId32 "\n", jcr.unique_chunk_num);
+	printf("origin size(B): %" PRId64 "\n", jcr.origin_data_size);
 	printf("total size(B): %" PRId64 "\n", jcr.data_size);
+	printf("compress ratio: %.2f\n", jcr.data_size != 0 ? jcr.origin_data_size / (double) (jcr.data_size) : 0);
 	printf("stored data size(B): %" PRId64 "\n",
 			jcr.unique_data_size + jcr.rewritten_chunk_size);
 	printf("deduplication ratio: %.4f, %.4f\n",

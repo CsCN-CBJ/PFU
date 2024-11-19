@@ -4,6 +4,7 @@
 #include "storage/containerstore.h"
 #include "utils/lru_cache.h"
 #include "restore.h"
+#include <zstd.h>
 
 static void* lru_restore_thread(void *arg) {
 	struct lruCache *cache;
@@ -110,6 +111,7 @@ static void* read_recipe_thread(void *arg) {
 void* write_restore_data(void* arg) {
 
 	char *p, *q;
+	char *decompBuf = (char*) malloc(destor.chunk_max_size);
 	q = jcr.path + 1;/* ignore the first char*/
 	/*
 	 * recursively make directory
@@ -173,7 +175,14 @@ void* write_restore_data(void* arg) {
 		} else {
 			assert(destor.simulation_level == SIMULATION_NO);
 			VERBOSE("Restoring %d bytes", c->size);
-			fwrite(c->data, c->size, 1, fp);
+			// decompress
+			size_t size = ZSTD_decompress(decompBuf, destor.chunk_max_size, c->data, c->size);
+			if (size > 0) {
+				fwrite(decompBuf, size, 1, fp);
+			} else {
+				fprintf(stderr, "Decompress error\n");
+				exit(1);
+			}
 		}
 
 		free_chunk(c);
@@ -181,6 +190,7 @@ void* write_restore_data(void* arg) {
 		TIMER_END(1, jcr.write_chunk_time);
 	}
 
+	free(decompBuf);
     jcr.status = JCR_STATUS_DONE;
     return NULL;
 }
