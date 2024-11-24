@@ -13,14 +13,20 @@ GHashTable *upgrade_storage_buffer = NULL; // 确保当前在storage_buffer中�
 containerid upgrade_storage_buffer_id = -1;
 
 void init_upgrade_index() {
-    init_upgrade_fingerprint_cache();
+    init_upgrade_external_cache();
+	if (destor.fake_containers) {
+		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, NULL, g_int64_hash, g_int64_equal);
+	} else {
+		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, g_hash_table_destroy, g_int64_hash, g_int64_equal);
+	}
+    
     upgrade_processing = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
     upgrade_container = g_hash_table_new_full(g_int64_hash, g_int64_equal, NULL, free);
     memset(&upgrade_index_overhead, 0, sizeof(struct index_overhead));
 }
 
 void close_upgrade_index() {
-    close_upgrade_fingerprint_cache();
+    close_upgrade_external_cache();
     assert(g_hash_table_size(upgrade_processing) == 0);
     g_hash_table_destroy(upgrade_processing);
     g_hash_table_destroy(upgrade_container);
@@ -140,7 +146,7 @@ void _upgrade_dedup_external(struct chunk *c, struct index_overhead *stats) {
     if (CHECK_CHUNK(c, CHUNK_DUPLICATE)) return;
 
     stats->kvstore_lookup_requests++;
-    if (upgrade_fingerprint_cache_prefetch(c->id)) {
+    if (upgrade_external_cache_prefetch(c->id)) {
         stats->kvstore_hits++;
         stats->read_prefetching_units++;
         upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);
@@ -220,15 +226,6 @@ int compare_upgrade_index_value(GHashTable **htb, fingerprint *old_fp) {
 	return g_hash_table_lookup(*htb, old_fp) != NULL;
 }
 
-void init_upgrade_fingerprint_cache() {
-	if (destor.fake_containers) {
-		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, NULL, g_int64_hash, g_int64_equal);
-	} else {
-		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, g_hash_table_destroy, g_int64_hash, g_int64_equal);
-	}
-    init_upgrade_external_cache();
-}
-
 upgrade_index_value_t* upgrade_fingerprint_cache_lookup(struct chunk* c) {
 	GHashTable *htb = lru_hashmap_lookup(upgrade_cache, &c->id);
 	if (htb) {
@@ -288,7 +285,7 @@ void upgrade_fingerprint_cache_insert(containerid id, GHashTable *htb) {
     // }
 }
 
-void insert_buffer_to_memory_cache(upgrade_index_kv_t *buf, int size, containerid id) {
+void upgrade_fingerprint_cache_insert_buffer(containerid id, upgrade_index_kv_t *buf, int size) {
 	GHashTable *c = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
 	for (int i = 0; i < size; i++) {
 		upgrade_index_kv_t *kv_i = malloc(sizeof(upgrade_index_kv_t));

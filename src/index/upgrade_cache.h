@@ -10,6 +10,7 @@
 
 #include "../destor.h"
 #include "../recipe/recipestore.h"
+#include "upgrade_external.h"
 
 typedef struct {
     int64_t id;
@@ -35,12 +36,9 @@ void upgrade_index_update(GSequence *chunks, int64_t id);
 
 void upgrade_index_lookup_2D_filter(struct chunk *c);
 
-void init_upgrade_fingerprint_cache();
-void close_upgrade_fingerprint_cache();
 upgrade_index_value_t* upgrade_fingerprint_cache_lookup(struct chunk* c);
-void upgrade_external_cache_insert(containerid id, GHashTable *htb);
 void upgrade_fingerprint_cache_insert(containerid id, GHashTable *htb);
-int upgrade_fingerprint_cache_prefetch(containerid id);
+void upgrade_fingerprint_cache_insert_buffer(containerid id, upgrade_index_kv_t *buf, int size);
 
 upgrade_index_value_t* upgrade_1D_fingerprint_cache_lookup(fingerprint *old_fp);
 void upgrade_1D_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_value_t *v);
