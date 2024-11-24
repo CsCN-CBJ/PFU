@@ -105,10 +105,10 @@ am__v_AR_1 =
 libindex_a_AR = $(AR) $(ARFLAGS)
 libindex_a_LIBADD =
 am_libindex_a_OBJECTS = index.$(OBJEXT) upgrade_cache.$(OBJEXT) \
-	fingerprint_cache.$(OBJEXT) kvstore.$(OBJEXT) \
-	kvstore_htable.$(OBJEXT) kvstore_ror.$(OBJEXT) \
-	sampling_method.$(OBJEXT) segmenting_method.$(OBJEXT) \
-	similarity_detection.$(OBJEXT)
+	upgrade_external.$(OBJEXT) fingerprint_cache.$(OBJEXT) \
+	kvstore.$(OBJEXT) kvstore_htable.$(OBJEXT) \
+	kvstore_ror.$(OBJEXT) sampling_method.$(OBJEXT) \
+	segmenting_method.$(OBJEXT) similarity_detection.$(OBJEXT)
 libindex_a_OBJECTS = $(am_libindex_a_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -256,7 +256,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 noinst_LIBRARIES = libindex.a
-libindex_a_SOURCES = index.c upgrade_cache.c fingerprint_cache.c kvstore.c kvstore_htable.c kvstore_ror.c sampling_method.c segmenting_method.c similarity_detection.c
+libindex_a_SOURCES = index.c upgrade_cache.c upgrade_external.c fingerprint_cache.c kvstore.c kvstore_htable.c kvstore_ror.c sampling_method.c segmenting_method.c similarity_detection.c
 all: all-am
 
 .SUFFIXES:
@@ -314,6 +314,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/segmenting_method.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/similarity_detection.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/upgrade_cache.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/upgrade_external.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
