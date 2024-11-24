@@ -36,11 +36,11 @@ void do_backup(char *path) {
     do{
         sleep(5);
         /*time_t now = time(NULL);*/
-        fprintf(stderr,"job %" PRId32 ", %" PRId64 " GB, %" PRId32 " chunks, %d files processed\r", 
-                jcr.id, jcr.data_size >> 30, jcr.chunk_num, jcr.file_num);
+        fprintf(stderr,"job %" PRId32 ", %ld origin GB, %" PRId64 " GB, %" PRId32 " chunks, %d files processed\r", 
+                jcr.id, jcr.origin_data_size >> 30, jcr.data_size >> 30, jcr.chunk_num, jcr.file_num);
     }while(jcr.status == JCR_STATUS_RUNNING || jcr.status != JCR_STATUS_DONE);
-    fprintf(stderr,"job %" PRId32 ", %" PRId64 " GB, %" PRId32 " chunks, %d files processed\n", 
-        jcr.id, jcr.data_size >> 30, jcr.chunk_num, jcr.file_num);
+    fprintf(stderr,"job %" PRId32 ", %ld origin GB, %" PRId64 " GB, %" PRId32 " chunks, %d files processed\n", 
+        jcr.id, jcr.origin_data_size >> 30, jcr.data_size >> 30, jcr.chunk_num, jcr.file_num);
 
 	if (destor.simulation_level == SIMULATION_ALL) {
 		stop_read_trace_phase();

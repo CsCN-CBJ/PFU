@@ -46,6 +46,7 @@ function genBasicData() {
 
 function compareRestore() {
     # 判断各个restore的文件是否和源文件一致, define $flag
+    rm -f ${LOG_DIR}/compareRestore.txt
     set +e  # 防止diff错误导致程序退出, 需要比较完所有的文件
     for ((i=0; i<RESTORE_ID; i++))
     do

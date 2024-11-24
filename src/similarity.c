@@ -372,6 +372,7 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 		jcr.physical_recipe_unique_container += unique_num;
 		// 基础版不进行切分合并
 		if (!destor.upgrade_do_split_merge) {
+			WARNING("file %s num: %d Unique num %d", u->recipe->filename, u->chunk_num, unique_num);
 			feature_table_insert(featureTable, features, array->size);
 			dynamic_array_add(array, u);
 			free(u->chunks);
@@ -597,7 +598,7 @@ void* read_similarity_recipe_thread(void *arg) {
 			}
 		}
 		g_hash_table_destroy(recipeRef);
-		WARNING("Best recipe %ld %ld", bestRecipeID, bestRecipeRef);
+		WARNING("recipe similarity %ld", bestRecipeRef);
 		// 如果没有找到任何相似的recipe, 选择第一个未发送的recipe
 		if (bestRecipeID == -1) {
 			for (containerid id = 0; id < recipe_num; id++) {
