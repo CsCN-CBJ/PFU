@@ -36,7 +36,9 @@ void upgrade_index_update(GSequence *chunks, int64_t id);
 void upgrade_index_lookup_2D_filter(struct chunk *c);
 
 void init_upgrade_fingerprint_cache();
+void close_upgrade_fingerprint_cache();
 upgrade_index_value_t* upgrade_fingerprint_cache_lookup(struct chunk* c);
+void upgrade_external_cache_insert(containerid id, GHashTable *htb);
 void upgrade_fingerprint_cache_insert(containerid id, GHashTable *htb);
 int upgrade_fingerprint_cache_prefetch(containerid id);
 

@@ -67,5 +67,6 @@ void init_upgrade_index_store();
 void close_upgrade_index_store();
 void write_upgrade_index_container(GHashTable* c, int64_t id);
 GHashTable* retrieve_upgrade_index_container_by_id(int64_t id);
+int64_t get_container_count();
 
 #endif /* CONTAINERSTORE_H_ */

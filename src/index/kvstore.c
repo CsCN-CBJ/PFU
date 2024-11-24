@@ -42,6 +42,7 @@ void init_kvstore() {
 
     switch(destor.index_key_value_store){
     	case INDEX_KEY_VALUE_HTABLE:
+		case INDEX_KEY_VALUE_FILE:
     		// init_kvstore_mysql();
 			// if (destor.upgrade_level == UPGRADE_1D_RELATION) {
 			// 	init_upgrade_kvstore_htable(destor.index_key_size, sizeof(upgrade_index_value_t));

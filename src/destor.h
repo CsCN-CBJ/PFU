@@ -74,6 +74,9 @@ int job;
 #define UPGRADE_2D_CONSTRAINED 3
 #define UPGRADE_SIMILARITY 4
 #define UPGRADE_SIMILARITY_PLUS 5
+#define UPGRADE_2D_REORDER 6
+#define UPGRADE_SIMILARITY_REORDER 7
+#define UPGRADE_SIMILARITY_PLUS_REORDER 8
 
 /* Log levels */
 #define DESTOR_DEBUG 0
@@ -139,6 +142,7 @@ int job;
 #define INDEX_KEY_VALUE_HTABLE 0
 #define INDEX_KEY_VALUE_MYSQL 1
 #define INDEX_KEY_VALUE_ROR 2
+#define INDEX_KEY_VALUE_FILE 3
 /*
  * Feature is used for prefetching segments (similarity) or containers (locality).
  * For example, when we find a duplicate chunk,
@@ -243,6 +247,7 @@ struct destor {
 	// upgrade flags
 	int upgrade_level;
 	int upgrade_do_split_merge;
+	int upgrade_reorder;
 
 	int chunk_algorithm;
 	int chunk_max_size;

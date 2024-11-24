@@ -16,6 +16,7 @@ extern GHashTable *upgrade_processing;
 extern GHashTable *upgrade_container;
 
 upgrade_lock_t upgrade_index_lock;
+static void* sha256_thread(void* arg);
 
 static void* read_recipe_thread(void *arg) {
 
@@ -138,7 +139,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		int16_t container_num = 0;
 		int is_new;
 		// 将需要读取的container放到conList中
-		if (cm) {
+		if (cm && destor.external_cache_size > 0) {
 			assert(cm->old_id == c->id);
 			conList = malloc(sizeof(struct container *) * cm->container_num);
 			DEBUG("Read new container %ld %ld %d", c->id, cm->new_id, cm->container_num);
@@ -228,6 +229,73 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 	return NULL;
 }
 
+void process_all_container() {
+	struct chunk *ck;
+	int64_t count = get_container_count();
+	for (containerid id = 0; id < count; id++) {
+		TIMER_DECLARE(1);
+		TIMER_BEGIN(1);
+		// send container
+		ck = new_chunk(0);
+		SET_CHUNK(ck, CHUNK_CONTAINER_START);
+		TIMER_END(1, jcr.read_chunk_time);
+		sync_queue_push(upgrade_chunk_queue, ck);
+		TIMER_BEGIN(1);
+
+		GHashTableIter iter;
+		gpointer key, value;
+		struct container *con = retrieve_container_by_id(id);
+		g_hash_table_iter_init(&iter, con->meta.map);
+		while(g_hash_table_iter_next(&iter, &key, &value)){
+			ck = get_chunk_in_container(con, key);
+			assert(ck);
+			memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
+			memset(ck->fp, 0, sizeof(fingerprint));
+			ck->id = TEMPORARY_ID;
+			TIMER_END(1, jcr.read_chunk_time);
+			sync_queue_push(upgrade_chunk_queue, ck);
+			TIMER_BEGIN(1);
+		}
+		free_container(con);
+
+		ck = new_chunk(0);
+		ck->id = id;
+		SET_CHUNK(ck, CHUNK_CONTAINER_END);
+		TIMER_END(1, jcr.read_chunk_time);
+		sync_queue_push(upgrade_chunk_queue, ck);
+	}
+	sync_queue_term(upgrade_chunk_queue);
+}
+
+void *reorder_read_thread(void *arg) {
+	pthread_t hash_t;
+	TIMER_DECLARE(1);
+	TIMER_BEGIN(1);
+	pthread_create(&hash_t, NULL, sha256_thread, NULL);
+	process_all_container();
+	pthread_join(hash_t, NULL);
+	TIMER_END(1, jcr.pre_process_container_time);
+
+	if (destor.upgrade_level == UPGRADE_SIMILARITY) {
+		read_similarity_recipe_thread(NULL);
+	} else {
+		read_recipe_thread(NULL);
+	}
+	return NULL;
+}
+
+void *reorder_transit_thread(void *arg) {
+	struct chunk *c;
+	while ((c = sync_queue_pop(upgrade_recipe_queue))) {
+		sync_queue_push(hash_queue, c);
+	}
+	sync_queue_term(hash_queue);
+	return NULL;
+}
+
+void *blank_thread(void *arg) {
+	return NULL;
+}
 
 static void* pre_dedup_thread(void *arg) {
 	while (1) {
@@ -287,7 +355,9 @@ static void* sha256_thread(void* arg) {
 		struct chunk* c = sync_queue_pop(upgrade_chunk_queue);
 
 		if (c == NULL) {
-			sync_queue_term(hash_queue);
+			if (!destor.upgrade_reorder) {
+				sync_queue_term(hash_queue);
+			}
 			break;
 		}
 
@@ -345,6 +415,13 @@ static void pre_process_args() {
 		destor.upgrade_do_split_merge = FALSE;
 	}
 
+	if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS_REORDER) {
+		destor.upgrade_level = UPGRADE_SIMILARITY_REORDER;
+		destor.upgrade_do_split_merge = TRUE;
+	} else {
+		destor.upgrade_do_split_merge = FALSE;
+	}
+
 	if (destor.CDC_ratio != 0) {
 		destor.CDC_max_size = destor.index_cache_size;
 		destor.CDC_exp_size = (int)(destor.CDC_max_size * destor.CDC_ratio / 100);
@@ -362,6 +439,10 @@ static void pre_process_args() {
 		break;
 	case UPGRADE_2D_CONSTRAINED:
 	case UPGRADE_SIMILARITY:
+		break;
+	case UPGRADE_2D_REORDER:
+	case UPGRADE_SIMILARITY_REORDER:
+		destor.upgrade_reorder = 1;
 		break;
 	default:
 		assert(0);
@@ -424,6 +505,20 @@ void do_update(int revision, char *path) {
 		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
 		pthread_create(&hash_t, NULL, sha256_thread, NULL);
+		break;
+	case UPGRADE_2D_REORDER:
+		destor.upgrade_level = UPGRADE_2D_CONSTRAINED;
+		pthread_create(&recipe_t, NULL, reorder_read_thread, NULL);
+		pthread_create(&pre_dedup_t, NULL, blank_thread, NULL);
+		pthread_create(&read_t, NULL, reorder_transit_thread, NULL);
+		pthread_create(&hash_t, NULL, blank_thread, NULL);
+		break;
+	case UPGRADE_SIMILARITY_REORDER:
+		destor.upgrade_level = UPGRADE_SIMILARITY;
+		pthread_create(&recipe_t, NULL, reorder_read_thread, NULL);
+		pthread_create(&pre_dedup_t, NULL, blank_thread, NULL);
+		pthread_create(&read_t, NULL, reorder_transit_thread, NULL);
+		pthread_create(&hash_t, NULL, blank_thread, NULL);
 		break;
 	default:
 		assert(0);

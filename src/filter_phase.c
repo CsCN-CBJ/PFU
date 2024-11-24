@@ -847,7 +847,8 @@ static void* filter_thread_constrained(void* arg) {
                 container_begin = -1;
                 container_num = 0;
 
-                setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+                // setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+                upgrade_external_cache_insert(c->id, htb);
             } else {
                 // 检查热process的逻辑是否正确 随时可删
                 assert(container_begin == -1);

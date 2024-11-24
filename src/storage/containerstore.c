@@ -556,3 +556,12 @@ void write_upgrade_index_container(GHashTable* c, int64_t id) {
 GHashTable* retrieve_upgrade_index_container_by_id(int64_t id) {
 	return g_hash_table_lookup(upgrade_index_store, &id);
 }
+
+int64_t get_container_count() {
+	int64_t count = 0;
+	pthread_mutex_lock(&old_mutex);
+	fseek(old_fp, 0, SEEK_SET);
+	fread(&count, 8, 1, old_fp);
+	pthread_mutex_unlock(&old_mutex);
+	return count;
+}
