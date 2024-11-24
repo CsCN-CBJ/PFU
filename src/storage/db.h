@@ -1,3 +1,6 @@
+#ifndef DB_H_
+#define DB_H_
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,10 +13,9 @@ enum {
     DB_ALL,
 };
 
-#define DB_UPGRADE 0
-#define DB_KVSTORE 1
-
 void initDB(int index);
 void closeDB(int index);
 void setDB(int index, char *key, size_t keySize, char *value, size_t valueSize);
 int getDB(int index, char *key, size_t keySize, char **value, size_t *valueSize);
+
+#endif /* DB_H_ */

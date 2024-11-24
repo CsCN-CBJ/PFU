@@ -255,17 +255,11 @@ void init_upgrade_external_cache() {
     }
 }
 
-void init_upgrade_1D_fingerprint_cache();
 void init_upgrade_fingerprint_cache() {
-	if (destor.upgrade_level == UPGRADE_1D_RELATION) {
-		init_upgrade_1D_fingerprint_cache();
-		return;
-	}
 	if (destor.fake_containers) {
 		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, NULL, g_int64_hash, g_int64_equal);
 	} else {
-        // inner cache踢出时不释放
-		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, NULL, g_int64_hash, g_int64_equal);
+		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, g_hash_table_destroy, g_int64_hash, g_int64_equal);
 	}
     init_upgrade_external_cache();
 }

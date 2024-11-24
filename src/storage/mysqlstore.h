@@ -8,6 +8,7 @@
 #include <mysql/mysql.h>
 #include "../destor.h"
 #include "../index/fingerprint_cache.h"
+#include "../index/upgrade_cache.h"
 
 #define SERVER "localhost"
 #define USER "root"
