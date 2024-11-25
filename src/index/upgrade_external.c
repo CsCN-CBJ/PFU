@@ -115,7 +115,7 @@ int upgrade_external_cache_prefetch_DB(containerid id) {
 }
 
 int upgrade_external_cache_prefetch_htb(containerid id) {
-    assert(0); // 不用删除
+    assert(0); // 不用从external cache中删除?
     if (lru_hashmap_lookup(external_cache_htb, &id)) {
         // 将external cache命中的数据(第一个)放入in-memory cache
 

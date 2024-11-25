@@ -836,33 +836,35 @@ static void* filter_thread_constrained(void* arg) {
             assert(c->id>=0);
             pthread_mutex_lock(&upgrade_index_lock.mutex);
 
-            if (!CHECK_CHUNK(c, CHUNK_REPROCESS)) {
-                // add to containerMap
-                struct containerMap *cm = malloc(sizeof(struct containerMap));
-                cm->old_id = c->id;
-                cm->new_id = container_begin;
-                cm->container_num = container_num;
-                g_hash_table_insert(upgrade_container, &cm->old_id, cm);
-                DEBUG("container id: %ld, container_begin: %ld, container_num: %d\n", c->id, container_begin, container_num);
-                container_begin = -1;
-                container_num = 0;
-
-                // setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
-                upgrade_external_cache_insert(c->id, htb);
-            } else {
-                // 检查热process的逻辑是否正确 随时可删
-                assert(container_begin == -1);
-                assert(container_num == 0);
-            }
             if (CHECK_CHUNK(c, CHUNK_REPROCESS)) {
                 upgrade_fingerprint_cache_insert(c->id, htb);
+                assert(container_begin == -1);
+                assert(container_num == 0);
             } else {
                 // 保证包含当前container_buffer的container永远不会被LRU刷下去
                 if (upgrade_storage_buffer) {
-                    upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
+                    if (destor.upgrade_reorder) {
+                        // 如果是重排的upgrade, 则不需要插入memory cache
+                        g_hash_table_destroy(htb);
+                    } else {
+                        upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
+                    }
                 }
                 upgrade_storage_buffer = htb;
                 upgrade_storage_buffer_id = c->id;
+                
+                // add to containerMap
+                // struct containerMap *cm = malloc(sizeof(struct containerMap));
+                // cm->old_id = c->id;
+                // cm->new_id = container_begin;
+                // cm->container_num = container_num;
+                // g_hash_table_insert(upgrade_container, &cm->old_id, cm);
+                // DEBUG("container id: %ld, container_begin: %ld, container_num: %d\n", c->id, container_begin, container_num);
+                // container_begin = -1;
+                // container_num = 0;
+
+                // insert into external cache
+                upgrade_external_cache_insert(c->id, htb);
             }
             htb = NULL;
             g_hash_table_remove(upgrade_processing, &c->id);
