@@ -845,7 +845,7 @@ static void* filter_thread_constrained(void* arg) {
                 if (upgrade_storage_buffer) {
                     if (destor.upgrade_reorder) {
                         // 如果是重排的upgrade, 则不需要插入memory cache
-                        g_hash_table_destroy(htb);
+                        g_hash_table_destroy(upgrade_storage_buffer);
                     } else {
                         upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
                     }
@@ -876,13 +876,14 @@ static void* filter_thread_constrained(void* arg) {
             if (!CHECK_CHUNK(c, CHUNK_REPROCESS)) {
                 append_chunk_to_buffer(c);
                 assert(c->id >= 0);
-                if (container_begin == -1) {
-                    container_begin = c->id;
-                }
-                containerid new_num = c->id - container_begin + 1;
-                assert(container_num <= new_num);
-                container_num = new_num;
-                assert(container_num <= 3);
+                // check for containerMap
+                // if (container_begin == -1) {
+                //     container_begin = c->id;
+                // }
+                // containerid new_num = c->id - container_begin + 1;
+                // assert(container_num <= new_num);
+                // container_num = new_num;
+                // assert(container_num <= 3);
             }
 
             upgrade_index_kv_t *kvp;

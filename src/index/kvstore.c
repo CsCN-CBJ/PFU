@@ -24,6 +24,26 @@ extern int64_t* kvstore_ror_lookup(char* key);
 extern void kvstore_ror_update(char* key, int64_t id);
 extern void kvstore_ror_delete(char* key, int64_t id);
 
+FILE *kvstore_file;
+void init_kvstore_file() {
+	sds path = sdsdup(destor.working_directory);
+	path = sdscat(path, "/kvstore_file");
+	kvstore_file = fopen(path, "w");
+	sdsfree(path);
+}
+
+void close_kvstore_file() {
+	fclose(kvstore_file);
+}
+
+void kvstore_file_update(char* key, int64_t id) {
+	fwrite(key, 1, destor.index_key_size, kvstore_file);
+	fwrite(&id, 1, sizeof(int64_t), kvstore_file);
+}
+
+void kvstore_file_lookup(char* key) {assert(0);}
+void kvstore_file_delete(char* key, int64_t id) {assert(0);}
+
 /*
  * Mapping a fingerprint (or feature) to the prefetching unit.
  */
@@ -42,7 +62,6 @@ void init_kvstore() {
 
     switch(destor.index_key_value_store){
     	case INDEX_KEY_VALUE_HTABLE:
-		case INDEX_KEY_VALUE_FILE:
     		// init_kvstore_mysql();
 			// if (destor.upgrade_level == UPGRADE_1D_RELATION) {
 			// 	init_upgrade_kvstore_htable(destor.index_key_size, sizeof(upgrade_index_value_t));
@@ -75,6 +94,13 @@ void init_kvstore() {
 			kvstore_update = kvstore_ror_update;
 			kvstore_delete = kvstore_ror_delete;
     		break;
+		case INDEX_KEY_VALUE_FILE:
+			init_kvstore_file();
+			close_kvstore = close_kvstore_file;
+			kvstore_lookup = kvstore_file_lookup;
+			kvstore_update = kvstore_file_update;
+			kvstore_delete = kvstore_file_delete;
+			break;
     	default:
     		WARNING("Invalid key-value store!");
     		exit(1);

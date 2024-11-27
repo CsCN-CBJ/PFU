@@ -12,6 +12,9 @@ GHashTable *upgrade_container;
 GHashTable *upgrade_storage_buffer = NULL; // 确保当前在storage_buffer中的container不会被LRU踢出
 containerid upgrade_storage_buffer_id = -1;
 
+static struct lruCache* upgrade_lru_queue;
+static lruHashMap_t *upgrade_cache;
+
 void init_upgrade_index() {
     init_upgrade_external_cache();
 	if (destor.fake_containers) {
@@ -219,8 +222,6 @@ int upgrade_index_lookup(struct chunk* c) {
  * Upgrade fingerprint cache
  * LRU of GHashTable(old_fp, upgrade_index_value_t)
 */
-static struct lruCache* upgrade_lru_queue;
-static lruHashMap_t *upgrade_cache;
 
 int compare_upgrade_index_value(GHashTable **htb, fingerprint *old_fp) {
 	return g_hash_table_lookup(*htb, old_fp) != NULL;
