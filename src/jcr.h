@@ -63,6 +63,13 @@ struct jcr{
 	double read_recipe_time;
 	double read_chunk_time;
 	double write_chunk_time;
+	double pre_process_container_time;
+	double container_filter_time;
+	double pre_process_recipe_time;
+	double memory_cache_time;
+	double external_cache_time;
+	uint32_t processed_container_num;
+	uint32_t container_processed;
 
 	uint32_t sql_insert;
 	uint32_t sql_insert_all;

@@ -10,6 +10,7 @@
 #include "index/upgrade_cache.h"
 #include "similarity.h"
 
+#define QUEUE_SIZE 10000
 /* defined in index.c */
 extern struct index_overhead index_overhead, upgrade_index_overhead;
 extern GHashTable *upgrade_processing;
@@ -17,6 +18,7 @@ extern GHashTable *upgrade_container;
 
 upgrade_lock_t upgrade_index_lock;
 static void* sha256_thread(void* arg);
+void end_update();
 
 static void* read_recipe_thread(void *arg) {
 
@@ -38,12 +40,13 @@ static void* read_recipe_thread(void *arg) {
 
 		sync_queue_push(upgrade_recipe_queue, c);
 
+		TIMER_BEGIN(1);
 		struct chunkPointer* cps = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &k);
+		TIMER_END(1, jcr.read_recipe_time);
 		assert(k == r->chunknum);
 		count_cache_hit(cps, r->chunknum);
 
 		for (j = 0; j < r->chunknum; j++) {
-			TIMER_DECLARE(1);
 			TIMER_BEGIN(1);
 
 			struct chunkPointer* cp = cps + j;
@@ -263,6 +266,7 @@ void process_all_container() {
 		SET_CHUNK(ck, CHUNK_CONTAINER_END);
 		TIMER_END(1, jcr.read_chunk_time);
 		sync_queue_push(upgrade_chunk_queue, ck);
+		jcr.processed_container_num++;
 	}
 	sync_queue_term(upgrade_chunk_queue);
 }
@@ -275,6 +279,9 @@ void *reorder_read_thread(void *arg) {
 	process_all_container();
 	pthread_join(hash_t, NULL);
 	TIMER_END(1, jcr.pre_process_container_time);
+	jcr.container_filter_time = jcr.filter_time;
+	jcr.filter_time = 0;
+	jcr.container_processed = 1;
 
 	if (destor.upgrade_level == UPGRADE_SIMILARITY) {
 		read_similarity_recipe_thread(NULL);
@@ -287,6 +294,13 @@ void *reorder_read_thread(void *arg) {
 void *reorder_transit_thread(void *arg) {
 	struct chunk *c;
 	while ((c = sync_queue_pop(upgrade_recipe_queue))) {
+		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
+			sync_queue_push(hash_queue, c);
+			continue;
+		}
+		assert(jcr.container_processed);
+		upgrade_index_lookup(c);
+		assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
 		sync_queue_push(hash_queue, c);
 	}
 	sync_queue_term(hash_queue);
@@ -407,6 +421,11 @@ static void* sha256_thread(void* arg) {
 	return NULL;
 }
 
+void print_status() {
+	fprintf(stderr, "%" PRId64 " GB, %" PRId32 " chunks, %d files processed, %d container processed %d files pre_processed\r", 
+		jcr.data_size >> 30, jcr.chunk_num, jcr.file_num, jcr.processed_container_num, jcr.pre_process_file_num);
+}
+
 static void pre_process_args() {
 	if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS) {
 		destor.upgrade_level = UPGRADE_SIMILARITY;
@@ -472,10 +491,10 @@ void do_update(int revision, char *path) {
 	destor_log(DESTOR_NOTICE, "new backup path: %s", jcr.new_bv->path);
 	destor_log(DESTOR_NOTICE, "update to: %s", jcr.path);
 
-	upgrade_recipe_queue = sync_queue_new(100);
-	upgrade_chunk_queue = sync_queue_new(100);
-	pre_dedup_queue = sync_queue_new(100);
-	hash_queue = sync_queue_new(100);
+	upgrade_recipe_queue = sync_queue_new(QUEUE_SIZE);
+	upgrade_chunk_queue = sync_queue_new(QUEUE_SIZE);
+	pre_dedup_queue = sync_queue_new(QUEUE_SIZE);
+	hash_queue = sync_queue_new(QUEUE_SIZE);
 
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
@@ -533,11 +552,9 @@ void do_update(int revision, char *path) {
     do{
         sleep(5);
         /*time_t now = time(NULL);*/
-        fprintf(stderr, "%" PRId64 " GB, %" PRId32 " chunks, %d files processed, %d files pre_processed\r", 
-                jcr.data_size >> 30, jcr.chunk_num, jcr.file_num, jcr.pre_process_file_num);
+        print_status();
     }while(jcr.status == JCR_STATUS_RUNNING || jcr.status != JCR_STATUS_DONE);
-    fprintf(stderr, "%" PRId64 " GB, %" PRId32 " chunks, %d files processed\n", 
-        jcr.data_size >> 30, jcr.chunk_num, jcr.file_num);
+	print_status();
 
 	assert(sync_queue_size(upgrade_recipe_queue) == 0);
 	assert(sync_queue_size(upgrade_chunk_queue) == 0);
@@ -559,6 +576,10 @@ void do_update(int revision, char *path) {
 	stop_filter_phase();
 
 	TIMER_END(1, jcr.total_time);
+	end_update();
+}
+
+void end_update() {
 	puts("==== update end ====");
 
 	close_index();

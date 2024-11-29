@@ -165,8 +165,13 @@ void upgrade_index_lookup_2D(struct chunk *c, struct index_overhead *stats, int 
 
     stats->index_lookup_requests++;
 
+    TIMER_DECLARE(1);
+    TIMER_BEGIN(1);
     _upgrade_dedup_buffer(c, stats);
+    TIMER_END(1, jcr.memory_cache_time);
+    TIMER_BEGIN(1);
     _upgrade_dedup_external(c, stats);
+    TIMER_END(1, jcr.external_cache_time);
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         stats->lookup_requests_for_unique++;

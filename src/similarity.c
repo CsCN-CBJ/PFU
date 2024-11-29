@@ -448,9 +448,12 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLRU[FEATURE_NUM], struct lruCache *lru) {
 	assert(destor.upgrade_level == UPGRADE_SIMILARITY);
 	
+	TIMER_DECLARE(1);
+	TIMER_BEGIN(1);
 	struct fileRecipeMeta *r = unit->recipe;
 	assert(unit->chunks == NULL);
 	struct chunkPointer *cp = read_n_chunk_pointers(jcr.bv, unit->chunk_off, unit->chunk_num);
+	TIMER_END(1, jcr.read_recipe_time);
 
 	// 发送recipe
 	struct chunk *c = new_chunk(2 * sizeof(containerid) + sdslen(r->filename) + 1);
@@ -462,13 +465,16 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 
 	count_cache_hit(cp, unit->chunk_num);
 
+	TIMER_BEGIN(1);
 	for (int i = 0; i < unit->chunk_num; i++) {
 		// 遍历recipe中所有chunk, 对其containerid进行特征计算
 		struct chunk* c = new_chunk(0);
 		memcpy(&c->old_fp, &cp[i].fp, sizeof(fingerprint));
 		c->size = cp[i].size;
 		c->id = cp[i].id;
+		TIMER_END(1, jcr.read_recipe_time);
 		sync_queue_push(upgrade_recipe_queue, c);
+		TIMER_BEGIN(1);
 
 		for (int k = 0; k < FEATURE_NUM; k++) {
 			featuresInLRU[k] = MIN(featuresInLRU[k], CALC_FEATURE(cp[i].id, k));
@@ -509,6 +515,7 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 
 	c = new_chunk(0);
 	SET_CHUNK(c, CHUNK_FILE_END);
+	TIMER_END(1, jcr.read_recipe_time);
 	sync_queue_push(upgrade_recipe_queue, c);
 
 	free_file_recipe_meta(r);
@@ -554,7 +561,7 @@ void* read_similarity_recipe_thread(void *arg) {
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
 	int recipe_num = process_recipe(&recipeList, featureTable);
-	TIMER_END(1, jcr.read_recipe_time);
+	TIMER_END(1, jcr.pre_process_recipe_time);
 
 	// send recipes
 	struct lruCache *lru = new_lru_cache(destor.index_cache_size, free, compare_container_id);
