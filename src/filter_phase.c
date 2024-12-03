@@ -715,13 +715,13 @@ static void* filter_thread_constrained(void* arg) {
     struct fileRecipeMeta* r = NULL;
 	struct backupVersion* bv = jcr.new_bv;
     GHashTable *htb = NULL;
-    int kv_buffer_size = MAX_META_PER_CONTAINER * 3;
-    upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * kv_buffer_size); // sql insertion buffer
-    int kv_num = 0;
+    // int kv_buffer_size = MAX_META_PER_CONTAINER * 3;
+    // upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * kv_buffer_size); // sql insertion buffer
+    // int kv_num = 0;
 	GSequence *file_chunks = NULL;
 	int in_container = FALSE;
-    containerid container_begin = -1;
-    int16_t container_num = 0;
+    // containerid container_begin = -1;
+    // int16_t container_num = 0;
 
     GHashTable *recipe_cache_htb = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, NULL);
     recipeCache_t *recipe_cache_finished = NULL;
@@ -736,8 +736,10 @@ static void* filter_thread_constrained(void* arg) {
 
         TIMER_DECLARE(1);
         TIMER_BEGIN(1);
+        TIMER_DECLARE(2);
 
 		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
+            TIMER_BEGIN(2);
             assert(!in_container);
 			file_chunks = g_sequence_new(free_chunk);
 
@@ -772,7 +774,9 @@ static void* filter_thread_constrained(void* arg) {
             }
 
 			free_chunk(c);
+            TIMER_END(2, jcr.file_start_time);
 		} else if (CHECK_CHUNK(c, CHUNK_FILE_END)) {
+            TIMER_BEGIN(2);
             assert(!in_container);
 			free_chunk(c);
 
@@ -822,15 +826,19 @@ static void* filter_thread_constrained(void* arg) {
                 assert(0);
                 break;
             }
+            TIMER_END(2, jcr.file_end_time);
             
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_START)) {
+            TIMER_BEGIN(2);
 			assert(!in_container);
 			in_container = TRUE;
             assert(htb == NULL);
             htb = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
-			kv_num = 0;
+			// kv_num = 0;
             free_chunk(c);
+            TIMER_END(2, jcr.container_start_time);
 		} else if (CHECK_CHUNK(c, CHUNK_CONTAINER_END)) {
+            TIMER_BEGIN(2);
 			assert(in_container);
 			in_container = FALSE;
             assert(c->id>=0);
@@ -838,8 +846,8 @@ static void* filter_thread_constrained(void* arg) {
 
             if (CHECK_CHUNK(c, CHUNK_REPROCESS)) {
                 upgrade_fingerprint_cache_insert(c->id, htb);
-                assert(container_begin == -1);
-                assert(container_num == 0);
+                // assert(container_begin == -1);
+                // assert(container_num == 0);
             } else {
                 // 保证包含当前container_buffer的container永远不会被LRU刷下去
                 if (upgrade_storage_buffer) {
@@ -866,12 +874,14 @@ static void* filter_thread_constrained(void* arg) {
                 // insert into external cache
                 upgrade_external_cache_insert(c->id, htb);
             }
-            htb = NULL;
             g_hash_table_remove(upgrade_processing, &c->id);
             pthread_mutex_unlock(&upgrade_index_lock.mutex);
-            DEBUG("Insert id: %ld %d records %ldB into sql", c->id, kv_num, kv_num * sizeof(upgrade_index_kv_t));
+            DEBUG("Process container %ld, %ld chunks", c->id, g_hash_table_size(htb));
+            htb = NULL;
             free_chunk(c);
+            TIMER_END(2, jcr.container_end_time);
 		} else if (in_container){
+            TIMER_BEGIN(2);
 			// container chunks
             if (!CHECK_CHUNK(c, CHUNK_REPROCESS)) {
                 append_chunk_to_buffer(c);
@@ -893,12 +903,14 @@ static void* filter_thread_constrained(void* arg) {
             kvp->value.id = c->id;
             g_hash_table_insert(htb, &kvp->old_fp, &kvp->value);
 
-            assert(kv_num <= kv_buffer_size);
-            memcpy(&kv[kv_num], kvp, sizeof(upgrade_index_kv_t));
-            ++kv_num;
+            // assert(kv_num <= kv_buffer_size);
+            // memcpy(&kv[kv_num], kvp, sizeof(upgrade_index_kv_t));
+            // ++kv_num;
 
             free_chunk(c);
+            TIMER_END(2, jcr.in_container_time);
 		} else {
+            TIMER_BEGIN(2);
 			// recipe chunks
             if (CHECK_CHUNK(c, CHUNK_PROCESSING)) {
                 UNSET_CHUNK(c, CHUNK_DUPLICATE);
@@ -919,6 +931,7 @@ static void* filter_thread_constrained(void* arg) {
             } else {
                 g_sequence_append(file_chunks, c);
             }
+            TIMER_END(2, jcr.in_file_time);
 		}
         TIMER_END(1, jcr.filter_time);
 	}
@@ -929,7 +942,7 @@ static void* filter_thread_constrained(void* arg) {
     assert(g_hash_table_size(recipe_cache_htb) == 0);
     g_hash_table_destroy(recipe_cache_htb);
     /* All files done */
-    free(kv);
+    // free(kv);
     jcr.status = JCR_STATUS_DONE;
     return NULL;
 }

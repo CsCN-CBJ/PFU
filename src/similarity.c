@@ -548,8 +548,6 @@ void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLR
 void* read_similarity_recipe_thread(void *arg) {
 
 	int i, j, k;
-	fingerprint zero_fp;
-	memset(zero_fp, 0, sizeof(fingerprint));
 	recipeUnit_t **recipeList;
 	// list [ hashtable [ feature -> featureList[ recipe id ] ] ]
 	GHashTable *featureTable[FEATURE_NUM];
@@ -571,6 +569,7 @@ void* read_similarity_recipe_thread(void *arg) {
 		// 选择一个与当前缓存最相似的recipe
 		// 使用新的htb记录recipe的引用次数
 		// containerid recipeID -> int64_t ref
+		TIMER_BEGIN(1);
 		GHashTable *recipeRef = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, free);
 		containerid bestRecipeID = -1;
 		int64_t bestRecipeRef = -1;
@@ -621,6 +620,7 @@ void* read_similarity_recipe_thread(void *arg) {
 		containerid *recipeID_p = malloc(sizeof(containerid));
 		*recipeID_p = bestRecipeID;
 		g_hash_table_insert(sendedRecipe, recipeID_p, "1");
+		TIMER_END(1, jcr.read_recipe_time);
 
 		// 发送recipe
 		recipeUnit_t *unit = recipeList[bestRecipeID];

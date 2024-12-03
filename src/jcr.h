@@ -70,6 +70,12 @@ struct jcr{
 	double external_cache_time;
 	uint32_t processed_container_num;
 	uint32_t container_processed;
+	double file_start_time;
+	double file_end_time;
+	double container_start_time;
+	double container_end_time;
+	double in_file_time;
+	double in_container_time;
 
 	uint32_t sql_insert;
 	uint32_t sql_insert_all;

@@ -232,7 +232,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 	return NULL;
 }
 
-void process_all_container() {
+void* read_container_thread(void *arg) {
 	struct chunk *ck;
 	int64_t count = get_container_count();
 	for (containerid id = 0; id < count; id++) {
@@ -269,6 +269,7 @@ void process_all_container() {
 		jcr.processed_container_num++;
 	}
 	sync_queue_term(upgrade_chunk_queue);
+	return NULL;
 }
 
 void *reorder_read_thread(void *arg) {
@@ -276,7 +277,7 @@ void *reorder_read_thread(void *arg) {
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
 	pthread_create(&hash_t, NULL, sha256_thread, NULL);
-	process_all_container();
+	read_container_thread(NULL);
 	pthread_join(hash_t, NULL);
 	TIMER_END(1, jcr.pre_process_container_time);
 	jcr.container_filter_time = jcr.filter_time;
@@ -291,7 +292,7 @@ void *reorder_read_thread(void *arg) {
 	return NULL;
 }
 
-void *reorder_transit_thread(void *arg) {
+void *reorder_dedup_thread(void *arg) {
 	struct chunk *c;
 	while ((c = sync_queue_pop(upgrade_recipe_queue))) {
 		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
@@ -304,10 +305,6 @@ void *reorder_transit_thread(void *arg) {
 		sync_queue_push(hash_queue, c);
 	}
 	sync_queue_term(hash_queue);
-	return NULL;
-}
-
-void *blank_thread(void *arg) {
 	return NULL;
 }
 
@@ -369,9 +366,7 @@ static void* sha256_thread(void* arg) {
 		struct chunk* c = sync_queue_pop(upgrade_chunk_queue);
 
 		if (c == NULL) {
-			if (!destor.upgrade_reorder) {
-				sync_queue_term(hash_queue);
-			}
+			sync_queue_term(hash_queue);
 			break;
 		}
 
@@ -422,19 +417,24 @@ static void* sha256_thread(void* arg) {
 }
 
 void print_status() {
-	fprintf(stderr, "%" PRId64 " GB, %" PRId32 " chunks, %d files processed, %d container processed %d files pre_processed\r", 
+	fprintf(stderr, "%" PRId64 " GB, %" PRId32 " chunks, %d files, %d container, %d files pre_processed\r", 
 		jcr.data_size >> 30, jcr.chunk_num, jcr.file_num, jcr.processed_container_num, jcr.pre_process_file_num);
+}
+
+void wait_jobs_done() {
+	do {
+		sleep(5);
+		print_status();
+	} while(jcr.status == JCR_STATUS_RUNNING || jcr.status != JCR_STATUS_DONE);
+	print_status();
+	printf("\n");
 }
 
 static void pre_process_args() {
 	if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS) {
 		destor.upgrade_level = UPGRADE_SIMILARITY;
 		destor.upgrade_do_split_merge = TRUE;
-	} else {
-		destor.upgrade_do_split_merge = FALSE;
-	}
-
-	if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS_REORDER) {
+	} else if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS_REORDER) {
 		destor.upgrade_level = UPGRADE_SIMILARITY_REORDER;
 		destor.upgrade_do_split_merge = TRUE;
 	} else {
@@ -473,6 +473,70 @@ static void pre_process_args() {
 	WARNING("cache size %d %d", destor.index_cache_size, destor.external_cache_size);
 }
 
+void do_reorder_upgrade() {
+	pthread_t read_t, hash_t, dedup_t;
+	switch (destor.upgrade_level)
+	{
+	case UPGRADE_2D_REORDER:
+		destor.upgrade_level = UPGRADE_2D_CONSTRAINED;
+		break;
+	case UPGRADE_SIMILARITY_REORDER:
+		destor.upgrade_level = UPGRADE_SIMILARITY;
+		break;
+	default:
+		assert(0);
+	}
+
+	TIMER_DECLARE(1);
+	TIMER_BEGIN(1);
+	puts("==== upgrade container begin ====");
+    jcr.status = JCR_STATUS_RUNNING;
+	upgrade_chunk_queue = sync_queue_new(QUEUE_SIZE);
+	hash_queue = sync_queue_new(QUEUE_SIZE);
+	pthread_create(&read_t, NULL, read_container_thread, NULL);
+	pthread_create(&hash_t, NULL, sha256_thread, NULL);
+	start_filter_phase();
+
+	wait_jobs_done();
+
+	assert(sync_queue_size(upgrade_chunk_queue) == 0);
+	assert(sync_queue_size(hash_queue) == 0);
+	pthread_join(read_t, NULL);
+	pthread_join(hash_t, NULL);
+	stop_filter_phase();
+	TIMER_END(1, jcr.pre_process_container_time);
+	jcr.container_filter_time = jcr.filter_time;
+	jcr.filter_time = 0;
+	jcr.container_processed = 1;
+
+	puts("==== upgrade recipe begin ====");
+    jcr.status = JCR_STATUS_RUNNING;
+	upgrade_recipe_queue = sync_queue_new(QUEUE_SIZE);
+	hash_queue = sync_queue_new(QUEUE_SIZE);
+	if (destor.upgrade_level == UPGRADE_SIMILARITY) {
+		pthread_create(&read_t, NULL, read_similarity_recipe_thread, NULL);
+	} else {
+		pthread_create(&read_t, NULL, read_recipe_thread, NULL);
+	}
+	pthread_create(&dedup_t, NULL, reorder_dedup_thread, NULL);
+	start_filter_phase();
+	
+	wait_jobs_done();
+
+	assert(sync_queue_size(upgrade_recipe_queue) == 0);
+	assert(sync_queue_size(hash_queue) == 0);
+	pthread_join(read_t, NULL);
+	pthread_join(dedup_t, NULL);
+	stop_filter_phase();
+
+	free_backup_version(jcr.bv);
+	update_backup_version(jcr.new_bv);
+	free_backup_version(jcr.new_bv);
+
+	TIMER_END(1, jcr.total_time);
+	end_update();
+}
+
 void do_update(int revision, char *path) {
 
 	pre_process_args();
@@ -491,6 +555,11 @@ void do_update(int revision, char *path) {
 	destor_log(DESTOR_NOTICE, "new backup path: %s", jcr.new_bv->path);
 	destor_log(DESTOR_NOTICE, "update to: %s", jcr.path);
 
+	if (destor.upgrade_reorder) {
+		do_reorder_upgrade();
+		return;
+	}
+	
 	upgrade_recipe_queue = sync_queue_new(QUEUE_SIZE);
 	upgrade_chunk_queue = sync_queue_new(QUEUE_SIZE);
 	pre_dedup_queue = sync_queue_new(QUEUE_SIZE);
@@ -524,20 +593,6 @@ void do_update(int revision, char *path) {
 		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
 		pthread_create(&hash_t, NULL, sha256_thread, NULL);
-		break;
-	case UPGRADE_2D_REORDER:
-		destor.upgrade_level = UPGRADE_2D_CONSTRAINED;
-		pthread_create(&recipe_t, NULL, reorder_read_thread, NULL);
-		pthread_create(&pre_dedup_t, NULL, blank_thread, NULL);
-		pthread_create(&read_t, NULL, reorder_transit_thread, NULL);
-		pthread_create(&hash_t, NULL, blank_thread, NULL);
-		break;
-	case UPGRADE_SIMILARITY_REORDER:
-		destor.upgrade_level = UPGRADE_SIMILARITY;
-		pthread_create(&recipe_t, NULL, reorder_read_thread, NULL);
-		pthread_create(&pre_dedup_t, NULL, blank_thread, NULL);
-		pthread_create(&read_t, NULL, reorder_transit_thread, NULL);
-		pthread_create(&hash_t, NULL, blank_thread, NULL);
 		break;
 	default:
 		assert(0);
