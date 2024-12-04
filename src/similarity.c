@@ -572,11 +572,12 @@ void* read_similarity_recipe_thread(void *arg) {
 		TIMER_BEGIN(1);
 		GHashTable *recipeRef = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, free);
 		containerid bestRecipeID = -1;
-		int64_t bestRecipeRef = -1;
+		int64_t bestRecipeRef = 0;
 		for (j = 0; j < FEATURE_NUM && bestRecipeRef < FEATURE_NUM && i != 0; j++) {
 			feature f = featuresInLRU[j];
 			assert(f != ULONG_MAX);
 			struct featureList *list = g_hash_table_lookup(featureTable[j], &f);
+			assert(list);
 			if (!list) continue;
 			assert(list->feature == f);
 			for (k = 0; k < list->count; k++) {

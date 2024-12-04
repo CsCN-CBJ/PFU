@@ -8,6 +8,7 @@
 #include "index/index.h"
 #include "index/upgrade_cache.h"
 #include "index/fingerprint_cache.h"
+#include "utils/cache.h"
 
 static pthread_t filter_t;
 static int64_t chunk_num;
@@ -695,9 +696,29 @@ static void append_chunk_sequence(struct backupVersion* bv, struct fileRecipeMet
     }
 }
 
+static void append_chunk_array(struct backupVersion* bv, struct fileRecipeMeta* r, DynamicArray *file_chunks) {
+    // iter seq
+    struct chunk *c;
+    for (int i = 0; i < file_chunks->size; i++) {
+        c = file_chunks->data[i];
+        assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+        struct chunkPointer cp;
+        cp.id = c->id;
+        assert(cp.id>=0);
+        memcpy(&cp.fp, &c->fp, sizeof(fingerprint));
+        cp.size = c->size;
+        append_n_chunk_pointers(bv, &cp ,1);
+        r->chunknum++;
+        r->filesize += c->size;
+
+        jcr.chunk_num++;
+        jcr.data_size += c->size;
+    }
+}
+
 typedef struct {
     struct fileRecipeMeta *recipe;
-    GSequence **file_chunks_list;
+    DynamicArray **file_chunks_list;
     int count;
     int total;
 } recipeCache_t;
@@ -718,7 +739,7 @@ static void* filter_thread_constrained(void* arg) {
     // int kv_buffer_size = MAX_META_PER_CONTAINER * 3;
     // upgrade_index_kv_t *kv = malloc(sizeof(upgrade_index_kv_t) * kv_buffer_size); // sql insertion buffer
     // int kv_num = 0;
-	GSequence *file_chunks = NULL;
+    DynamicArray *file_chunks = NULL;
 	int in_container = FALSE;
     // containerid container_begin = -1;
     // int16_t container_num = 0;
@@ -741,7 +762,7 @@ static void* filter_thread_constrained(void* arg) {
 		if (CHECK_CHUNK(c, CHUNK_FILE_START)) {
             TIMER_BEGIN(2);
             assert(!in_container);
-			file_chunks = g_sequence_new(free_chunk);
+            file_chunks = dynamic_array_new();
 
             switch (destor.upgrade_level)
             {
@@ -783,9 +804,9 @@ static void* filter_thread_constrained(void* arg) {
             switch (destor.upgrade_level)
             {
             case UPGRADE_2D_CONSTRAINED:
-                append_segment_flag(bv, CHUNK_SEGMENT_START, g_sequence_get_length(file_chunks));
-                append_chunk_sequence(bv, r, file_chunks);
-                g_sequence_free(file_chunks);
+                append_segment_flag(bv, CHUNK_SEGMENT_START, dynamic_array_get_length(file_chunks));
+                append_chunk_array(bv, r, file_chunks);
+                dynamic_array_free_special(file_chunks, free_chunk);
                 append_file_recipe_meta(bv, r);
                 free_file_recipe_meta(r);
                 r = NULL;
@@ -799,7 +820,7 @@ static void* filter_thread_constrained(void* arg) {
                 int totalSize = 0;
                 for (int i = 0; i < recipe_cache_finished->count; i++) {
                     file_chunks = recipe_cache_finished->file_chunks_list[i];
-                    totalSize += g_sequence_get_length(file_chunks);
+                    totalSize += dynamic_array_get_length(file_chunks);
                 }
                 append_segment_flag(bv, CHUNK_SEGMENT_START, totalSize);
 
@@ -807,8 +828,8 @@ static void* filter_thread_constrained(void* arg) {
                 r = recipe_cache_finished->recipe;
                 for (int i = 0; i < recipe_cache_finished->count; i++) {
                     file_chunks = recipe_cache_finished->file_chunks_list[i];
-                    append_chunk_sequence(bv, r, file_chunks);
-                    g_sequence_free(file_chunks);
+                    append_chunk_array(bv, r, file_chunks);
+                    dynamic_array_free_special(file_chunks, free_chunk);
                 }
 
                 // append fileRecipeMeta to backupVersion
@@ -929,7 +950,7 @@ static void* filter_thread_constrained(void* arg) {
                 jcr.data_size += c->size;
                 free_chunk(c);
             } else {
-                g_sequence_append(file_chunks, c);
+                dynamic_array_add(file_chunks, c);
             }
             TIMER_END(2, jcr.in_file_time);
 		}
