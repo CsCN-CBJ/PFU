@@ -21,7 +21,7 @@ static void* sha256_thread(void* arg);
 void end_update();
 
 static void* read_recipe_thread(void *arg) {
-
+	pthread_setname_np(pthread_self(), "read_recipe_thread");
 	int i, j, k;
 	fingerprint zero_fp;
 	memset(zero_fp, 0, sizeof(fingerprint));
@@ -233,6 +233,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 }
 
 void* read_container_thread(void *arg) {
+	pthread_setname_np(pthread_self(), "read_container");
 	struct chunk *ck;
 	int64_t count = get_container_count();
 	for (containerid id = 0; id < count; id++) {
@@ -294,6 +295,7 @@ void *reorder_read_thread(void *arg) {
 
 void *reorder_dedup_thread(void *arg) {
 	struct chunk *c;
+	pthread_setname_np(pthread_self(), "reorder_dedup");
 	while ((c = sync_queue_pop(upgrade_recipe_queue))) {
 		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
 			sync_queue_push(hash_queue, c);
@@ -360,6 +362,7 @@ static void* pre_dedup_thread(void *arg) {
 }
 
 static void* sha256_thread(void* arg) {
+	pthread_setname_np(pthread_self(), "sha256_thread");
 	// 只有计算在container内的chunk的hash, 如果不是2D, 则始终为TRUE
 	int in_container = TRUE;
 	while (1) {

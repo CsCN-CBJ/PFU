@@ -733,6 +733,7 @@ recipeCache_t *init_recipe_cache(int total) {
 
 
 static void* filter_thread_constrained(void* arg) {
+	pthread_setname_np(pthread_self(), "filter");
     struct fileRecipeMeta* r = NULL;
 	struct backupVersion* bv = jcr.new_bv;
     GHashTable *htb = NULL;

@@ -546,7 +546,7 @@ void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLR
 }
 
 void* read_similarity_recipe_thread(void *arg) {
-
+	pthread_setname_np(pthread_self(), "sim_recipe");
 	int i, j, k;
 	recipeUnit_t **recipeList;
 	// list [ hashtable [ feature -> featureList[ recipe id ] ] ]
