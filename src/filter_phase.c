@@ -9,6 +9,7 @@
 #include "index/upgrade_cache.h"
 #include "index/fingerprint_cache.h"
 #include "utils/cache.h"
+#include "similarity.h"
 
 static pthread_t filter_t;
 static int64_t chunk_num;
@@ -716,6 +717,27 @@ static void append_chunk_array(struct backupVersion* bv, struct fileRecipeMeta* 
     }
 }
 
+static void append_chunk_cks(struct backupVersion* bv, struct fileRecipeMeta* r, struct chunk *file_chunks, int size) {
+    // iter seq
+    struct chunk *c;
+    for (int i = 0; i < size; i++) {
+        c = file_chunks + i;
+        assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+        struct chunkPointer cp;
+        cp.id = c->id;
+        assert(cp.id>=0);
+        memcpy(&cp.fp, &c->fp, sizeof(fingerprint));
+        cp.size = c->size;
+        append_n_chunk_pointers(bv, &cp ,1);
+        r->chunknum++;
+        r->filesize += c->size;
+
+        jcr.chunk_num++;
+        jcr.data_size += c->size;
+    }
+}
+
+
 typedef struct {
     struct fileRecipeMeta *recipe;
     DynamicArray **file_chunks_list;
@@ -965,6 +987,77 @@ static void* filter_thread_constrained(void* arg) {
     g_hash_table_destroy(recipe_cache_htb);
     /* All files done */
     // free(kv);
+    jcr.status = JCR_STATUS_DONE;
+    return NULL;
+}
+
+void* filter_thread_recipe(void* arg) {
+	pthread_setname_np(pthread_self(), "recipe_filter");
+	struct backupVersion* bv = jcr.new_bv;
+    DynamicArray *file_chunks = NULL;
+    recipeUnit_t *ru = NULL;
+    GHashTable *recipe_cache_htb = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, NULL);
+    recipeCache_t *recipe_cache_finished;
+    while ((ru = sync_queue_pop(hash_queue)) != NULL) {
+        TIMER_DECLARE(1);
+        TIMER_BEGIN(1);
+        // file start
+        file_chunks = (DynamicArray *)malloc(sizeof(DynamicArray));
+        file_chunks->size = ru->chunk_num;
+        file_chunks->data = ru->cks;
+        containerid sub_id = ru->sub_id;
+        containerid total_num = ru->total_num;
+        unsigned char *filename = ru->recipe->filename;
+        recipeCache_t *rc = g_hash_table_lookup(recipe_cache_htb, filename);
+        if (!rc) {
+            rc = init_recipe_cache(total_num);
+            rc->recipe = new_file_recipe_meta(filename);
+            g_hash_table_insert(recipe_cache_htb, rc->recipe->filename, rc);
+        }
+        assert(rc->count < rc->total);
+        assert(sub_id < rc->total);
+        assert(rc->file_chunks_list[sub_id] == NULL);
+
+        rc->file_chunks_list[sub_id] = file_chunks;
+        rc->count++;
+        recipe_cache_finished = rc->count == rc->total ? rc : NULL;
+
+        // in file
+
+        // file end
+        free_file_recipe_meta(ru->recipe);
+        free(ru);
+        TIMER_END(1, jcr.filter_time);
+        if (!recipe_cache_finished) continue;
+        TIMER_BEGIN(1);
+
+        // calculate total chunk num
+        int totalSize = 0;
+        for (int i = 0; i < recipe_cache_finished->count; i++) {
+            file_chunks = recipe_cache_finished->file_chunks_list[i];
+            totalSize += dynamic_array_get_length(file_chunks);
+        }
+        append_segment_flag(bv, CHUNK_SEGMENT_START, totalSize);
+
+        // append all chunks to fileRecipeMeta
+        struct fileRecipeMeta *r = recipe_cache_finished->recipe;
+        for (int i = 0; i < recipe_cache_finished->count; i++) {
+            file_chunks = recipe_cache_finished->file_chunks_list[i];
+            append_chunk_cks(bv, r, file_chunks->data, file_chunks->size);
+            dynamic_array_free(file_chunks);
+        }
+
+        // append fileRecipeMeta to backupVersion
+        append_file_recipe_meta(bv, r);
+        append_segment_flag(bv, CHUNK_SEGMENT_END, 0);
+        jcr.file_num++;
+
+        // free recipe cache
+        g_hash_table_remove(recipe_cache_htb, r->filename);
+        free(recipe_cache_finished->file_chunks_list);
+        free(recipe_cache_finished);
+        TIMER_END(1, jcr.filter_time);
+    }
     jcr.status = JCR_STATUS_DONE;
     return NULL;
 }

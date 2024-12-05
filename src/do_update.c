@@ -294,16 +294,22 @@ void *reorder_read_thread(void *arg) {
 }
 
 void *reorder_dedup_thread(void *arg) {
-	struct chunk *c;
 	pthread_setname_np(pthread_self(), "reorder_dedup");
+	recipeUnit_t *c;
 	while ((c = sync_queue_pop(upgrade_recipe_queue))) {
-		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
-			sync_queue_push(hash_queue, c);
-			continue;
-		}
 		assert(jcr.container_processed);
-		upgrade_index_lookup(c);
-		assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
+		for (int i = 0; i < c->chunk_num; i++) {
+			upgrade_index_lookup(c->cks + i);
+			assert(CHECK_CHUNK((c->cks + i), CHUNK_DUPLICATE));
+		}
+		
+		// if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
+		// 	sync_queue_push(hash_queue, c);
+		// 	continue;
+		// }
+		// assert(jcr.container_processed);
+		// upgrade_index_lookup(c);
+		// assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
 		sync_queue_push(hash_queue, c);
 	}
 	sync_queue_term(hash_queue);
@@ -477,7 +483,7 @@ static void pre_process_args() {
 }
 
 void do_reorder_upgrade() {
-	pthread_t read_t, hash_t, dedup_t;
+	pthread_t read_t, hash_t, dedup_t, filter_t;
 	switch (destor.upgrade_level)
 	{
 	case UPGRADE_2D_REORDER:
@@ -507,6 +513,7 @@ void do_reorder_upgrade() {
 	pthread_join(read_t, NULL);
 	pthread_join(hash_t, NULL);
 	stop_filter_phase();
+	wait_append_thread();
 	TIMER_END(1, jcr.pre_process_container_time);
 	jcr.container_filter_time = jcr.filter_time;
 	jcr.filter_time = 0;
@@ -514,15 +521,15 @@ void do_reorder_upgrade() {
 
 	puts("==== upgrade recipe begin ====");
     jcr.status = JCR_STATUS_RUNNING;
-	upgrade_recipe_queue = sync_queue_new(QUEUE_SIZE);
-	hash_queue = sync_queue_new(QUEUE_SIZE);
+	upgrade_recipe_queue = sync_queue_new(100);
+	hash_queue = sync_queue_new(100);
 	if (destor.upgrade_level == UPGRADE_SIMILARITY) {
 		pthread_create(&read_t, NULL, read_similarity_recipe_thread, NULL);
 	} else {
 		pthread_create(&read_t, NULL, read_recipe_thread, NULL);
 	}
 	pthread_create(&dedup_t, NULL, reorder_dedup_thread, NULL);
-	start_filter_phase();
+	pthread_create(&filter_t, NULL, filter_thread_recipe, NULL);
 	
 	wait_jobs_done();
 
@@ -530,17 +537,19 @@ void do_reorder_upgrade() {
 	assert(sync_queue_size(hash_queue) == 0);
 	pthread_join(read_t, NULL);
 	pthread_join(dedup_t, NULL);
-	stop_filter_phase();
+	pthread_join(filter_t, NULL);
 
 	free_backup_version(jcr.bv);
 	update_backup_version(jcr.new_bv);
 	free_backup_version(jcr.new_bv);
 
 	TIMER_END(1, jcr.total_time);
+	jcr.recipe_time = jcr.total_time - jcr.pre_process_container_time - jcr.pre_process_recipe_time;
 	end_update();
 }
 
 void do_update(int revision, char *path) {
+	pthread_setname_np(pthread_self(), "main");
 
 	pre_process_args();
 

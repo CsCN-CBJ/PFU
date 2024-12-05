@@ -1,3 +1,4 @@
+#include "similarity.h"
 #include "destor.h"
 #include "jcr.h"
 #include "update.h"
@@ -184,28 +185,8 @@ uint64_t LT_b[] = {
     0xeb48a728aaf18d2e,
 };
 
-#define FEATURE_NUM 4
-typedef uint64_t feature;
 #define CALC_FEATURE(x, k) (((feature)(x)) * LT_k[k] + LT_b[k])
-
-struct featureList {
-	feature feature;
-	size_t count;
-	size_t max_count;
-	containerid *recipeIDList;
-};
-
-typedef struct recipeUnit {
-	struct fileRecipeMeta *recipe;
-	struct chunkPointer *chunks;
-	int64_t chunk_off;
-
-	containerid sub_id;
-	containerid total_num;
-	containerid chunk_num;
-
-	struct recipeUnit *next;
-} recipeUnit_t;
+// #define CALC_FEATURE(x, k) (((feature)(x)))
 
 void free_featureList(gpointer data) {
 	struct featureList *list = data;
@@ -451,11 +432,23 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
 	struct fileRecipeMeta *r = unit->recipe;
-	assert(unit->chunks == NULL);
-	struct chunkPointer *cp = read_n_chunk_pointers(jcr.bv, unit->chunk_off, unit->chunk_num);
+	struct chunkPointer *cps = read_n_chunk_pointers(jcr.bv, unit->chunk_off, unit->chunk_num);
+	unit->cks = calloc(unit->chunk_num, sizeof(struct chunk));
+	for (int i = 0; i < unit->chunk_num; i++) {
+		memcpy(&unit->cks[i].old_fp, &cps[i].fp, sizeof(fingerprint));
+		unit->cks[i].id = cps[i].id;
+		unit->cks[i].size = cps[i].size;
+		// calculate features
+		for (int k = 0; k < FEATURE_NUM; k++) {
+			featuresInLRU[k] = MIN(featuresInLRU[k], CALC_FEATURE(cps[i].id, k));
+		}
+	}
+	free(cps);
 	TIMER_END(1, jcr.read_recipe_time);
+	sync_queue_push(queue, unit);
 
 	// 发送recipe
+	#if 0
 	struct chunk *c = new_chunk(2 * sizeof(containerid) + sdslen(r->filename) + 1);
 	((containerid *)c->data)[0] = unit->sub_id;
 	((containerid *)c->data)[1] = unit->total_num;
@@ -520,6 +513,7 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 
 	free_file_recipe_meta(r);
 	free(cp);
+	#endif
 }
 
 void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLRU[FEATURE_NUM], struct lruCache *lru) {
@@ -533,15 +527,15 @@ void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLR
 		while (unit) {
 			WARNING("Send %s %ld/%ld", unit->recipe->filename, unit->sub_id + 1, unit->total_num);
 			send_one_recipe(queue, unit, featuresInLRU, lru);
-			recipeUnit_t *temp = unit;
+			// recipeUnit_t *temp = unit;
 			unit = unit->next;
-			free(temp);
+			// free(temp);
 		}
 		WARNING("Send merge recipe end");
 	} else {
 		WARNING("Send %s %ld/%ld", unit->recipe->filename, unit->sub_id + 1, unit->total_num);
 		send_one_recipe(queue, unit, featuresInLRU, lru);
-		free(unit);
+		// free(unit);
 	}
 }
 

@@ -49,6 +49,7 @@ void stop_rewrite_phase();
  * output: containers
  */
 void start_filter_phase();
+void* filter_thread_recipe(void* arg);
 void stop_filter_phase();
 /*
  * Write containers.

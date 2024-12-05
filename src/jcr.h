@@ -64,6 +64,7 @@ struct jcr{
 	double read_chunk_time;
 	double write_chunk_time;
 	double pre_process_container_time;
+	double recipe_time;
 	double container_filter_time;
 	double pre_process_recipe_time;
 	double memory_cache_time;

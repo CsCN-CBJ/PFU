@@ -25,6 +25,7 @@ struct metaEntry {
  */
 static void* append_thread(void *arg) {
 
+	pthread_setname_np(pthread_self(), "append");
 	while (1) {
 		struct container *c = sync_queue_get_top(container_buffer);
 		if (c == NULL)
@@ -94,12 +95,19 @@ void init_container_store() {
     NOTICE("Init container store successfully");
 }
 
+void wait_append_thread() {
+	sync_queue_term(container_buffer);
+	pthread_join(append_t, NULL);
+}
+
 void close_container_store() {
 	FILE *fp = job == DESTOR_UPDATE ? new_fp : old_fp;
 
-	sync_queue_term(container_buffer);
+	if (!destor.upgrade_reorder) {
+		sync_queue_term(container_buffer);
+		pthread_join(append_t, NULL);
+	}
 
-	pthread_join(append_t, NULL);
 	NOTICE("append phase stops successfully!");
 
 	fseek(fp, 0, SEEK_SET);
