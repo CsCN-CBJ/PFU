@@ -10,7 +10,7 @@
 #include "index/upgrade_cache.h"
 #include "similarity.h"
 
-#define QUEUE_SIZE 10000
+#define QUEUE_SIZE 1000
 /* defined in index.c */
 extern struct index_overhead index_overhead, upgrade_index_overhead;
 extern GHashTable *upgrade_processing;
@@ -232,42 +232,30 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 	return NULL;
 }
 
+#define CONTAINER_BUFFER_SIZE 100
 void* read_container_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "read_container");
 	struct chunk *ck;
 	int64_t count = get_container_count();
+	struct container **buffer[CONTAINER_BUFFER_SIZE], *con;
+	int bufOffset = 0, bufSize = 0;
 	for (containerid id = 0; id < count; id++) {
 		TIMER_DECLARE(1);
 		TIMER_BEGIN(1);
-		// send container
-		ck = new_chunk(0);
-		SET_CHUNK(ck, CHUNK_CONTAINER_START);
-		TIMER_END(1, jcr.read_chunk_time);
-		sync_queue_push(upgrade_chunk_queue, ck);
-		TIMER_BEGIN(1);
-
-		GHashTableIter iter;
-		gpointer key, value;
-		struct container *con = retrieve_container_by_id(id);
-		g_hash_table_iter_init(&iter, con->meta.map);
-		while(g_hash_table_iter_next(&iter, &key, &value)){
-			ck = get_chunk_in_container(con, key);
-			assert(ck);
-			memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
-			memset(ck->fp, 0, sizeof(fingerprint));
-			ck->id = TEMPORARY_ID;
-			TIMER_END(1, jcr.read_chunk_time);
-			sync_queue_push(upgrade_chunk_queue, ck);
-			TIMER_BEGIN(1);
+		
+		if (bufOffset == bufSize) {
+			bufSize = (count - id) > CONTAINER_BUFFER_SIZE ? CONTAINER_BUFFER_SIZE : (count - id);
+			for (int i = 0; i < bufSize; i++) {
+				buffer[i] = retrieve_container_by_id(id + i);
+				jcr.read_container_num++;
+			}
+			bufOffset = 0;
 		}
-		free_container(con);
+		con = buffer[bufOffset++];
 
-		ck = new_chunk(0);
-		ck->id = id;
-		SET_CHUNK(ck, CHUNK_CONTAINER_END);
 		TIMER_END(1, jcr.read_chunk_time);
-		sync_queue_push(upgrade_chunk_queue, ck);
-		jcr.processed_container_num++;
+		sync_queue_push(upgrade_chunk_queue, con);
+		jcr.processed_container_num++; 
 	}
 	sync_queue_term(upgrade_chunk_queue);
 	return NULL;
@@ -425,6 +413,33 @@ static void* sha256_thread(void* arg) {
 	return NULL;
 }
 
+static void* sha256_container(void* arg) {
+	pthread_setname_np(pthread_self(), "sha256_thread");
+	struct container *con;
+	struct chunk *c;
+	while ((con = sync_queue_pop(upgrade_chunk_queue)) != NULL) {
+		TIMER_DECLARE(1);
+		TIMER_BEGIN(1);
+		for (int i = 0; i < con->meta.chunk_num; i++) {
+			c = con->chunks + i;
+			jcr.hash_num++;
+			if (destor.simulation_level >= SIMULATION_RESTORE) {
+				assert(0);
+				memcpy(c->fp, c->old_fp, sizeof(fingerprint));
+			} else {
+				SHA256_CTX ctx;
+				SHA256_Init(&ctx);
+				SHA256_Update(&ctx, c->data, c->size);
+				SHA256_Final(c->fp, &ctx);
+			}
+		}
+		TIMER_END(1, jcr.hash_time);
+		sync_queue_push(hash_queue, con);
+	}
+	sync_queue_term(hash_queue);
+	return NULL;
+}
+
 void print_status() {
 	fprintf(stderr, "%" PRId64 " GB, %" PRId32 " chunks, %d files, %d container, %d files pre_processed\r", 
 		jcr.data_size >> 30, jcr.chunk_num, jcr.file_num, jcr.processed_container_num, jcr.pre_process_file_num);
@@ -503,8 +518,8 @@ void do_reorder_upgrade() {
 	upgrade_chunk_queue = sync_queue_new(QUEUE_SIZE);
 	hash_queue = sync_queue_new(QUEUE_SIZE);
 	pthread_create(&read_t, NULL, read_container_thread, NULL);
-	pthread_create(&hash_t, NULL, sha256_thread, NULL);
-	start_filter_phase();
+	pthread_create(&hash_t, NULL, sha256_container, NULL);
+	pthread_create(&filter_t, NULL, filter_thread_container, NULL);
 
 	wait_jobs_done();
 
@@ -512,7 +527,7 @@ void do_reorder_upgrade() {
 	assert(sync_queue_size(hash_queue) == 0);
 	pthread_join(read_t, NULL);
 	pthread_join(hash_t, NULL);
-	stop_filter_phase();
+	pthread_join(filter_t, NULL);
 	wait_append_thread();
 	TIMER_END(1, jcr.pre_process_container_time);
 	jcr.container_filter_time = jcr.filter_time;

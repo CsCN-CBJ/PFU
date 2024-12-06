@@ -97,6 +97,7 @@ void init_container_store() {
 
 void wait_append_thread() {
 	sync_queue_term(container_buffer);
+	// fsync(fileno(new_fp));
 	pthread_join(append_t, NULL);
 }
 
@@ -137,7 +138,7 @@ static void init_container_meta(struct containerMeta *meta) {
  * For backup.
  */
 struct container* create_container() {
-	struct container *c = (struct container*) malloc(sizeof(struct container));
+	struct container *c = (struct container*) calloc(1, sizeof(struct container));
 	if (destor.simulation_level < SIMULATION_APPEND)
 		c->data = calloc(1, CONTAINER_SIZE);
 	else
@@ -263,7 +264,7 @@ void write_container(struct container* c) {
 
 struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 	pthread_mutex_t *mutex = fp == new_fp ? &new_mutex : &old_mutex;
-	struct container *c = (struct container*) malloc(sizeof(struct container));
+	struct container *c = (struct container*) calloc(1, sizeof(struct container));
 	c->fp_size = fp == new_fp ? sizeof(fingerprint) : READ_CONTAINER_SZ;
 
 	init_container_meta(&c->meta);
@@ -311,6 +312,7 @@ struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 		assert(c->meta.id == id);
 	}
 
+	c->chunks = (struct chunk *)calloc(c->meta.chunk_num, sizeof(struct chunk));
 	int i;
 	for (i = 0; i < c->meta.chunk_num; i++) {
 		struct metaEntry* me = (struct metaEntry*) malloc(
@@ -320,6 +322,13 @@ struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 		unser_bytes(&me->len, sizeof(int32_t));
 		unser_bytes(&me->off, sizeof(int32_t));
 		g_hash_table_insert(c->meta.map, &me->fp, me);
+
+		struct chunk *ck = c->chunks + i;
+		ck->id = c->meta.id;
+		ck->size = me->len;
+		memcpy(&ck->old_fp, &me->fp, sizeof(fingerprint));
+		ck->data = malloc(me->len);
+		memcpy(ck->data, c->data + me->off, me->len);
 	}
 
 	unser_end(cur, CONTAINER_META_SIZE);
@@ -493,6 +502,12 @@ void free_container(struct container* c) {
 	g_hash_table_destroy(c->meta.map);
 	if (c->data)
 		free(c->data);
+	if (c->chunks) {
+		for (int i = 0; i < c->meta.chunk_num; i++) {
+			if (c->chunks[i].data) free(c->chunks[i].data);
+		}
+		free(c->chunks);
+	}
 	free(c);
 }
 

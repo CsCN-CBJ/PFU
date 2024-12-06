@@ -991,6 +991,69 @@ static void* filter_thread_constrained(void* arg) {
     return NULL;
 }
 
+void* filter_thread_container(void* arg) {
+	pthread_setname_np(pthread_self(), "filter");
+    GHashTable *htb = NULL;
+    struct container *con;
+    struct chunk *ck;
+    containerid id;
+    while ((con = sync_queue_pop(hash_queue)) != NULL) {
+        TIMER_DECLARE(1);
+        TIMER_BEGIN(1);
+
+        // container start
+        assert(htb == NULL);
+        htb = g_hash_table_new_full(g_feature_hash, g_feature_equal, free, NULL);
+        id = con->meta.id;
+        assert(id >= 0);
+
+        // in container
+        for (int i = 0; i < con->meta.chunk_num; i++) {
+            ck = con->chunks + i;
+            append_chunk_to_buffer(ck);
+            assert(ck->id >= 0);
+
+            upgrade_index_kv_t *kvp;
+            kvp = (upgrade_index_kv_t *)malloc(sizeof(upgrade_index_kv_t));
+            memcpy(kvp->old_fp, ck->old_fp, sizeof(fingerprint));
+            memcpy(kvp->value.fp, ck->fp, sizeof(fingerprint));
+            kvp->value.id = ck->id;
+            g_hash_table_insert(htb, &kvp->old_fp, &kvp->value);
+        }
+
+        // container end
+        pthread_mutex_lock(&upgrade_index_lock.mutex);
+        // TODO: 删除upgrade_storage_buffer 考虑在external里面free htb
+        // 保证包含当前container_buffer的container永远不会被LRU刷下去
+        if (upgrade_storage_buffer) {
+            if (destor.upgrade_reorder) {
+                // 如果是重排的upgrade, 则不需要插入memory cache
+                g_hash_table_destroy(upgrade_storage_buffer);
+            } else {
+                upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
+            }
+        }
+        upgrade_storage_buffer = htb;
+        upgrade_storage_buffer_id = id;
+        // insert into external cache
+        upgrade_external_cache_insert(id, htb);
+        pthread_mutex_unlock(&upgrade_index_lock.mutex);
+
+        DEBUG("Process container %ld, %ld chunks", id, g_hash_table_size(htb));
+        htb = NULL;
+        free_container(con);
+        TIMER_END(1, jcr.filter_time);
+    }
+    sync_queue_term(hash_queue);
+    if (storage_buffer.container_buffer
+    		&& !container_empty(storage_buffer.container_buffer)){
+        flush_container();
+    }
+    /* All files done */
+    jcr.status = JCR_STATUS_DONE;
+    return NULL;
+}
+
 void* filter_thread_recipe(void* arg) {
 	pthread_setname_np(pthread_self(), "recipe_filter");
 	struct backupVersion* bv = jcr.new_bv;

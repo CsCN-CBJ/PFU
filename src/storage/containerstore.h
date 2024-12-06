@@ -29,9 +29,11 @@ struct container {
 	struct containerMeta meta;
 	unsigned char *data;
 	uint32_t fp_size;
+	struct chunk *chunks;
 };
 
 void init_container_store();
+void wait_append_thread();
 void close_container_store();
 
 struct container* create_container();
