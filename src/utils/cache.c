@@ -40,3 +40,7 @@ void dynamic_array_add(DynamicArray *array, void *element) {
 int dynamic_array_get_length(DynamicArray *array) {
     return array->size;
 }
+
+void *dynamic_array_get(DynamicArray *array, int index) {
+    return array->data[index];
+}

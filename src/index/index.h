@@ -28,6 +28,7 @@ int index_lookup(struct segment*);
  * Insert/update fingerprints.
  */
 void index_update(GHashTable *features, int64_t id);
+void index_update_kvstore(DynamicArray *chunks, int64_t id);
 
 void index_delete(fingerprint *fp, int64_t id);
 

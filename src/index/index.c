@@ -7,6 +7,7 @@
 #include "../recipe/recipestore.h"
 #include "../jcr.h"
 #include "../storage/db.h"
+#include "../utils/cache.h"
 
 struct index_overhead index_overhead;
 struct index_buffer index_buffer;
@@ -279,6 +280,15 @@ void index_update(GHashTable *features, int64_t id){
     while (g_hash_table_iter_next(&iter, &key, &value)) {
         index_overhead.kvstore_update_requests++;
         kvstore_update(key, id);
+    }
+}
+
+void index_update_kvstore(DynamicArray *chunks, int64_t id) {
+    VERBOSE("Filter phase: update %d features", dynamic_array_get_length(chunks));
+    for (int i = 0; i < dynamic_array_get_length(chunks); i++) {
+        struct chunk *ck = dynamic_array_get(chunks, i);
+        index_overhead.kvstore_update_requests++;
+        kvstore_update(ck->fp, id);
     }
 }
 
