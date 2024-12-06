@@ -335,6 +335,11 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 	assert(total == u->recipe->chunknum);
 }
 
+recipeUnit_t **recipeList = NULL;
+// list [ hashtable [ feature -> featureList[ recipe id ] ] ]
+GHashTable *featureTable[FEATURE_NUM];
+int recipe_num = 0;
+
 static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[FEATURE_NUM]) {
 	assert(destor.CDC_max_size >= 2 * destor.CDC_min_size); // 确保两个小文件合并后不会超过最大容量
 	DynamicArray *array = dynamic_array_new();
@@ -424,6 +429,19 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 	int size = array->size;
 	free(array);
 	return size;
+}
+
+void* pre_process_recipe_thread(void *arg) {
+	pthread_setname_np(pthread_self(), "process_recipe");
+	// read all recipes and calculate features
+	TIMER_DECLARE(1);
+	TIMER_BEGIN(1);
+	for (int i = 0; i < FEATURE_NUM; i++) {
+		featureTable[i] = g_hash_table_new_full(g_int64_hash, g_int64_equal, free_featureList, NULL);
+	}
+	recipe_num = process_recipe(&recipeList, featureTable);
+	TIMER_END(1, jcr.pre_process_recipe_time);
+	return NULL;
 }
 
 static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLRU[FEATURE_NUM], struct lruCache *lru) {
@@ -542,18 +560,12 @@ void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLR
 void* read_similarity_recipe_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "sim_recipe");
 	int i, j, k;
-	recipeUnit_t **recipeList;
-	// list [ hashtable [ feature -> featureList[ recipe id ] ] ]
-	GHashTable *featureTable[FEATURE_NUM];
-	for (i = 0; i < FEATURE_NUM; i++) {
-		featureTable[i] = g_hash_table_new_full(g_int64_hash, g_int64_equal, free_featureList, NULL);
-	}
-
-	// read all recipes and calculate features
 	TIMER_DECLARE(1);
-	TIMER_BEGIN(1);
-	int recipe_num = process_recipe(&recipeList, featureTable);
-	TIMER_END(1, jcr.pre_process_recipe_time);
+	if (!arg) {
+		TIMER_BEGIN(1);
+		pre_process_recipe_thread(NULL);
+		TIMER_END(1, jcr.pre_process_recipe_time);
+	}
 
 	// send recipes
 	struct lruCache *lru = new_lru_cache(destor.index_cache_size, free, compare_container_id);

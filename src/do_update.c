@@ -498,7 +498,7 @@ static void pre_process_args() {
 }
 
 void do_reorder_upgrade() {
-	pthread_t read_t, hash_t, dedup_t, filter_t;
+	pthread_t read_t, hash_t, dedup_t, filter_t, recipe_t;
 	switch (destor.upgrade_level)
 	{
 	case UPGRADE_2D_REORDER:
@@ -520,6 +520,7 @@ void do_reorder_upgrade() {
 	pthread_create(&read_t, NULL, read_container_thread, NULL);
 	pthread_create(&hash_t, NULL, sha256_container, NULL);
 	pthread_create(&filter_t, NULL, filter_thread_container, NULL);
+	pthread_create(&recipe_t, NULL, pre_process_recipe_thread, NULL);
 
 	wait_jobs_done();
 
@@ -528,6 +529,7 @@ void do_reorder_upgrade() {
 	pthread_join(read_t, NULL);
 	pthread_join(hash_t, NULL);
 	pthread_join(filter_t, NULL);
+	pthread_join(recipe_t, NULL);
 	wait_append_thread();
 	TIMER_END(1, jcr.pre_process_container_time);
 	jcr.container_filter_time = jcr.filter_time;
@@ -539,7 +541,7 @@ void do_reorder_upgrade() {
 	upgrade_recipe_queue = sync_queue_new(100);
 	hash_queue = sync_queue_new(100);
 	if (destor.upgrade_level == UPGRADE_SIMILARITY) {
-		pthread_create(&read_t, NULL, read_similarity_recipe_thread, NULL);
+		pthread_create(&read_t, NULL, read_similarity_recipe_thread, (void *)1);
 	} else {
 		pthread_create(&read_t, NULL, read_recipe_thread, NULL);
 	}
@@ -559,7 +561,7 @@ void do_reorder_upgrade() {
 	free_backup_version(jcr.new_bv);
 
 	TIMER_END(1, jcr.total_time);
-	jcr.recipe_time = jcr.total_time - jcr.pre_process_container_time - jcr.pre_process_recipe_time;
+	jcr.recipe_time = jcr.total_time - jcr.pre_process_container_time;
 	end_update();
 }
 

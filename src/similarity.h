@@ -33,5 +33,6 @@ typedef struct recipeUnit {
 } recipeUnit_t;
 
 void* read_similarity_recipe_thread(void *arg);
+void* pre_process_recipe_thread(void *arg);
 
 #endif /* SIMILAITY_H_ */
