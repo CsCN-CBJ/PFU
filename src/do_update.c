@@ -680,25 +680,19 @@ void end_update() {
 	printf("throughput(MB/s): %.2f\n",
 			jcr.data_size * 1000000 / (1024.0 * 1024 * jcr.total_time));
 	
-	printf("1. container_time: %.3fs\n", jcr.pre_process_container_time / 1000000);
-	printf("----- read_chunk_time: %.3fs\n", jcr.read_chunk_time / 1000000);
-	printf("----- hash_time: %.3fs\n", jcr.hash_time / 1000000);
-	printf("----- filter_time: %.3fs\n", jcr.container_filter_time / 1000000);
-	printf("----- append_time: %.3fs\n", jcr.write_time / 1000000);
-	printf("2. pre_recipe_time: %.3fs\n", jcr.pre_process_recipe_time / 1000000);
-	printf("3. recipe_time: %.3fs\n", jcr.recipe_time / 1000000);
-	printf("----- read_recipe_time: %.3fs\n", jcr.read_recipe_time / 1000000);
-	printf("----- dedup_time: %.3fs\n", jcr.pre_dedup_time / 1000000);
-	printf("----- filter_time: %.3fs\n", jcr.filter_time / 1000000);
+	printf("1. container_time:\t%.3fs\n", jcr.pre_process_container_time / 1000000);
+	printf("----- read_chunk_time:\t%.3fs\n", jcr.read_chunk_time / 1000000);
+	printf("----- hash_time:\t%.3fs\n", jcr.hash_time / 1000000);
+	printf("----- filter_time:\t%.3fs\n", jcr.container_filter_time / 1000000);
+	printf("----- append_time:\t%.3fs\n", jcr.write_time / 1000000);
+	printf("----- pre_recipe_time:\t%.3fs\n", jcr.pre_process_recipe_time / 1000000);
+	printf("2. recipe_time:\t%.3fs\n", jcr.recipe_time / 1000000);
+	printf("----- read_recipe_time:\t%.3fs\n", jcr.read_recipe_time / 1000000);
+	printf("----- dedup_time:\t%.3fs\n", jcr.pre_dedup_time / 1000000);
+	printf("----- filter_time:\t%.3fs\n", jcr.filter_time / 1000000);
 
-	printf("file_start_time: %.3fs\n", jcr.file_start_time / 1000000);
-	printf("file_end_time: %.3fs\n", jcr.file_end_time / 1000000);
-	printf("in_file_time: %.3fs\n", jcr.in_file_time / 1000000);
-	printf("container_start_time: %.3fs\n", jcr.container_start_time / 1000000);
-	printf("container_end_time: %.3fs\n", jcr.container_end_time / 1000000);
-	printf("in_container_time: %.3fs\n", jcr.in_container_time / 1000000);
-	printf("memory_cache_time: %.3fs\n", jcr.memory_cache_time / 1000000);
-	printf("external_cache_time: %.3fs\n", jcr.external_cache_time / 1000000);
+	printf("memory_cache_time:\t%.3fs\n", jcr.memory_cache_time / 1000000);
+	printf("external_cache_time:\t%.3fs\n", jcr.external_cache_time / 1000000);
 
 	char logfile[] = "log/update.log";
 	FILE *fp = fopen(logfile, "a");
