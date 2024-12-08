@@ -999,6 +999,7 @@ void* filter_thread_recipe(void* arg) {
 
         // free recipe cache
         g_hash_table_remove(recipe_cache_htb, r->filename);
+        free_file_recipe_meta(recipe_cache_finished->recipe);
         free(recipe_cache_finished->file_chunks_list);
         free(recipe_cache_finished);
         TIMER_END(1, jcr.filter_time);

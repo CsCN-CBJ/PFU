@@ -434,6 +434,9 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 void* pre_process_recipe_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "process_recipe");
 	// read all recipes and calculate features
+	if (destor.upgrade_level != UPGRADE_SIMILARITY) {
+		return NULL;
+	}
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
 	for (int i = 0; i < FEATURE_NUM; i++) {
@@ -641,5 +644,35 @@ void* read_similarity_recipe_thread(void *arg) {
 		g_hash_table_destroy(featureTable[i]);
 	}
 	free(recipeList);
+	return NULL;
+}
+
+void* read_recipe_batch_thread(void *arg) {
+	pthread_setname_np(pthread_self(), "read_recipe_thread");
+	recipeUnit_t *unit;
+	feature *features[FEATURE_NUM];
+	for (int i = 0; i < jcr.bv->number_of_files; i++) {
+		TIMER_DECLARE(1);
+		TIMER_BEGIN(1);
+
+		unit = read_one_file(features);
+		assert(unit);
+		struct fileRecipeMeta *r = unit->recipe;
+		struct chunkPointer *cps = unit->chunks;
+		unit->cks = calloc(unit->chunk_num, sizeof(struct chunk));
+		for (int j = 0; j < unit->chunk_num; j++) {
+			memcpy(&unit->cks[j].old_fp, &cps[j].fp, sizeof(fingerprint));
+			unit->cks[j].id = cps[j].id;
+			unit->cks[j].size = cps[j].size;
+		}
+		free(cps);
+		unit->chunks = NULL;
+
+		TIMER_END(1, jcr.read_recipe_time);
+		NOTICE("Send recipe %s", r->filename);
+		sync_queue_push(upgrade_recipe_queue, unit);
+	}
+
+	sync_queue_term(upgrade_recipe_queue);
 	return NULL;
 }

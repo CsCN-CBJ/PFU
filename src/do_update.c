@@ -543,7 +543,7 @@ void do_reorder_upgrade() {
 	if (destor.upgrade_level == UPGRADE_SIMILARITY) {
 		pthread_create(&read_t, NULL, read_similarity_recipe_thread, (void *)1);
 	} else {
-		pthread_create(&read_t, NULL, read_recipe_thread, NULL);
+		pthread_create(&read_t, NULL, read_recipe_batch_thread, NULL);
 	}
 	pthread_create(&dedup_t, NULL, reorder_dedup_thread, NULL);
 	pthread_create(&filter_t, NULL, filter_thread_recipe, NULL);
@@ -693,6 +693,7 @@ void end_update() {
 
 	printf("memory_cache_time:\t%.3fs\n", jcr.memory_cache_time / 1000000);
 	printf("external_cache_time:\t%.3fs\n", jcr.external_cache_time / 1000000);
+	printf("external_cache_lookup:\t%" PRId32 "\n", upgrade_index_overhead.kvstore_lookup_requests);
 
 	char logfile[] = "log/update.log";
 	FILE *fp = fopen(logfile, "a");
