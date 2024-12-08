@@ -89,10 +89,12 @@ int backup_version_exists(int number);
 struct backupVersion* open_backup_version(int number);
 void update_backup_version(struct backupVersion *b);
 void free_backup_version(struct backupVersion *b);
+void upgrade_recipe_meta(struct backupVersion* b1, struct backupVersion* b2);
 
 void append_file_recipe_meta(struct backupVersion* b, struct fileRecipeMeta* r);
 void append_n_chunk_pointers(struct backupVersion* b,
 		struct chunkPointer* cp, int n);
+void write_n_chunks(struct backupVersion* b, struct chunk* cks, int n, int64_t off);
 struct fileRecipeMeta* read_next_file_recipe_meta(struct backupVersion* b);
 struct chunkPointer* read_next_n_chunk_pointers(struct backupVersion* b, int n,
 		int *k);

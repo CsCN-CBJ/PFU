@@ -941,11 +941,15 @@ void* filter_thread_recipe(void* arg) {
 	struct backupVersion* bv = jcr.new_bv;
     DynamicArray *file_chunks = NULL;
     recipeUnit_t *ru = NULL;
-    GHashTable *recipe_cache_htb = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, NULL);
-    recipeCache_t *recipe_cache_finished;
     while ((ru = sync_queue_pop(hash_queue)) != NULL) {
         TIMER_DECLARE(1);
         TIMER_BEGIN(1);
+        write_n_chunks(bv, ru->cks, ru->chunk_num, ru->chunk_off);
+        if (ru->sub_id == ru->total_num - 1) {
+            jcr.file_num++;
+        }
+        TIMER_END(1, jcr.filter_time);
+        #if 0
         // file start
         file_chunks = (DynamicArray *)malloc(sizeof(DynamicArray));
         file_chunks->size = ru->chunk_num;
@@ -1003,6 +1007,7 @@ void* filter_thread_recipe(void* arg) {
         free(recipe_cache_finished->file_chunks_list);
         free(recipe_cache_finished);
         TIMER_END(1, jcr.filter_time);
+        #endif
     }
     jcr.status = JCR_STATUS_DONE;
     return NULL;

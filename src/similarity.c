@@ -230,6 +230,7 @@ static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
 
 	recipeUnit_t *unit = malloc(sizeof(recipeUnit_t));
 	unit->chunk_off = ftell(jcr.bv->recipe_fp);
+	assert(unit->chunk_off % (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t)) == 0);
 
 	int chunknum;
 	struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);

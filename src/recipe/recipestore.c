@@ -313,6 +313,27 @@ void append_file_recipe_meta(struct backupVersion* b, struct fileRecipeMeta* r) 
 	b->number_of_files++;
 }
 
+void upgrade_recipe_meta(struct backupVersion* b1, struct backupVersion* b2) {
+	fclose(b1->metadata_fp);
+	b1->metadata_fp = NULL;
+	fclose(b2->metadata_fp);
+	b2->metadata_fp = NULL;
+	/* Copy the metadata */
+	sds src = sdsdup(b1->fname_prefix);
+	src = sdscat(src, ".meta");
+	sds dst = sdsdup(b2->fname_prefix);
+	dst = sdscat(dst, ".meta");
+	char *cmd = (char *) malloc(1024);
+	assert(snprintf(cmd, 1024, "cp %s %s", src, dst) > 0);
+	system(cmd);
+	free(cmd);
+
+	FILE *fp = fopen(dst, "r+");
+	fseek(fp, 0, SEEK_SET);
+	fwrite(&b2->bv_num, sizeof(b2->bv_num), 1, fp);
+	fclose(fp);
+}
+
 /*
  * 8-byte segment id,
  * 16-bit backup id, 32-bit off, 16-bit size
@@ -406,6 +427,29 @@ void append_n_chunk_pointers(struct backupVersion* b,
 
 		b->number_of_chunks++;
 	}
+}
+
+void write_n_chunks(struct backupVersion* b, struct chunk* cks, int n, int64_t off) {
+	assert(n > 0);
+	
+	char *buf = (char *) malloc(n * (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t)));
+	int64_t buf_off = 0;
+	for (int i = 0; i < n; i++) {
+		struct chunk bcp = cks[i];
+		assert(bcp.id != TEMPORARY_ID);
+
+		memcpy(buf + buf_off, &bcp.fp, sizeof(fingerprint));
+		buf_off += sizeof(fingerprint);
+		memcpy(buf + buf_off, &(bcp.id), sizeof(containerid));
+		buf_off += sizeof(containerid);
+		memcpy(buf + buf_off, &(bcp.size), sizeof(int32_t));
+		buf_off += sizeof(int32_t);
+
+		b->number_of_chunks++;
+		jcr.data_size += bcp.size;
+	}
+	fseek(b->recipe_fp, off, SEEK_SET);
+	fwrite(buf, buf_off, 1, b->recipe_fp);
 }
 
 struct fileRecipeMeta* read_next_file_recipe_meta(struct backupVersion* b) {
