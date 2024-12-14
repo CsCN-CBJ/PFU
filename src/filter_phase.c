@@ -948,6 +948,9 @@ void* filter_thread_recipe(void* arg) {
         if (ru->sub_id == ru->total_num - 1) {
             jcr.file_num++;
         }
+        free_file_recipe_meta(ru->recipe);
+        free(ru->cks);
+        free(ru);
         TIMER_END(1, jcr.filter_time);
         #if 0
         // file start

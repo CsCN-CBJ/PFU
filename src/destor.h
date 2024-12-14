@@ -283,6 +283,7 @@ struct destor {
 	int index_sampling_method[2];
 	/* Specify the key-value store. */
 	int index_key_value_store;
+	int upgrade_external_store;
 	/* The max number of prefetching units a key can refer to */
 	int index_value_length;
 	/* the size of the key in byte */

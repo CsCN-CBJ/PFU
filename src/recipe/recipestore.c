@@ -60,7 +60,7 @@ static int recordbufsize = 64*1024;
  * Create a new backupVersion structure for a backup run.
  */
 struct backupVersion* create_backup_version(const char *path) {
-	struct backupVersion *b = (struct backupVersion *) malloc(
+	struct backupVersion *b = (struct backupVersion *) calloc(1,
 			sizeof(struct backupVersion));
 
 	b->bv_num = get_next_version_number();
@@ -168,7 +168,7 @@ struct backupVersion* open_backup_version(int number) {
 		exit(1);
 	}
 
-	struct backupVersion *b = (struct backupVersion *) malloc(
+	struct backupVersion *b = (struct backupVersion *) calloc(1,
 			sizeof(struct backupVersion));
 
 	b->fname_prefix = sdsdup(recipepath);
@@ -450,6 +450,7 @@ void write_n_chunks(struct backupVersion* b, struct chunk* cks, int n, int64_t o
 	}
 	fseek(b->recipe_fp, off, SEEK_SET);
 	fwrite(buf, buf_off, 1, b->recipe_fp);
+	free(buf);
 }
 
 struct fileRecipeMeta* read_next_file_recipe_meta(struct backupVersion* b) {

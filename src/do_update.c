@@ -455,6 +455,9 @@ void wait_jobs_done() {
 }
 
 static void pre_process_args() {
+	destor.upgrade_external_store = destor.index_key_value_store;
+
+	// similarity
 	if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS) {
 		destor.upgrade_level = UPGRADE_SIMILARITY;
 		destor.upgrade_do_split_merge = TRUE;
@@ -465,6 +468,7 @@ static void pre_process_args() {
 		destor.upgrade_do_split_merge = FALSE;
 	}
 
+	// CDC
 	if (destor.CDC_ratio != 0) {
 		destor.CDC_max_size = destor.index_cache_size;
 		destor.CDC_exp_size = (int)(destor.CDC_max_size * destor.CDC_ratio / 100);
@@ -556,8 +560,8 @@ void do_reorder_upgrade() {
 	pthread_join(dedup_t, NULL);
 	pthread_join(filter_t, NULL);
 
+	upgrade_recipe_meta(jcr.bv, jcr.new_bv);
 	free_backup_version(jcr.bv);
-	update_backup_version(jcr.new_bv);
 	free_backup_version(jcr.new_bv);
 
 	TIMER_END(1, jcr.total_time);

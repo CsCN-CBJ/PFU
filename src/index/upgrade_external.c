@@ -21,7 +21,8 @@ int upgrade_external_cache_prefetch_DB(containerid id);
 int upgrade_external_cache_prefetch_file(containerid id);
 
 void init_upgrade_external_cache() {
-    switch (destor.index_key_value_store)
+    external_file_buffer = malloc(sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER);
+    switch (destor.upgrade_external_store)
     {
     case INDEX_KEY_VALUE_HTABLE:
         if (destor.fake_containers) {
@@ -45,7 +46,6 @@ void init_upgrade_external_cache() {
         path = sdscat(path, "/upgrade_external_cache");
         external_cache_file = fopen(path, "w+");
         sdsfree(path);
-        external_file_buffer = malloc(sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER);
 
         upgrade_external_cache_insert = upgrade_external_cache_insert_file;
         upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_file;
@@ -57,7 +57,8 @@ void init_upgrade_external_cache() {
 }
 
 void close_upgrade_external_cache() {
-    switch (destor.index_key_value_store)
+    free(external_file_buffer);
+    switch (destor.upgrade_external_store)
     {
     case INDEX_KEY_VALUE_HTABLE:
         // pass
@@ -70,7 +71,7 @@ void close_upgrade_external_cache() {
         break;
     case INDEX_KEY_VALUE_FILE:
         fclose(external_cache_file);
-        free(external_file_buffer);
+        break;
         break;
     default:
         break;

@@ -28,6 +28,7 @@ void init_ror(int index) {
         fprintf(stderr, "redisCommand returned error: %s\n", conn->errstr);
         exit(1);
     }
+    WARNING("redis connection %d success", index);
     freeReplyObject(reply);
 }
 
