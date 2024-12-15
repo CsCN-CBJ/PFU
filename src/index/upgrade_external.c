@@ -1,7 +1,9 @@
 #include "upgrade_external.h"
 #include "../storage/db.h"
+#include "../storage/rocks.h"
 #include "../utils/lru_cache.h"
 #include "../storage/containerstore.h"
+#include "../jcr.h"
 
 void (*upgrade_external_cache_insert)(containerid id, GHashTable *htb);
 int (*upgrade_external_cache_prefetch)(containerid id);
@@ -15,10 +17,12 @@ upgrade_index_kv_t *external_file_buffer;
 void upgrade_external_cache_insert_htb(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_DB(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_file(containerid id, GHashTable *htb);
+void upgrade_external_cache_insert_rocksdb(containerid id, GHashTable *htb);
 
 int upgrade_external_cache_prefetch_htb(containerid id);
 int upgrade_external_cache_prefetch_DB(containerid id);
 int upgrade_external_cache_prefetch_file(containerid id);
+int upgrade_external_cache_prefetch_rocksdb(containerid id);
 
 void init_upgrade_external_cache() {
     external_file_buffer = malloc(sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER);
@@ -51,6 +55,11 @@ void init_upgrade_external_cache() {
         upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_file;
         break;
     }
+    case INDEX_KEY_VALUE_ROCKSDB:
+        init_RocksDB(DB_UPGRADE);
+        upgrade_external_cache_insert = upgrade_external_cache_insert_rocksdb;
+        upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_rocksdb;
+        break;
     default:
         assert(0);
     }
@@ -72,10 +81,27 @@ void close_upgrade_external_cache() {
     case INDEX_KEY_VALUE_FILE:
         fclose(external_cache_file);
         break;
+    case INDEX_KEY_VALUE_ROCKSDB:
+        close_RocksDB(DB_UPGRADE);
         break;
     default:
         break;
     }
+}
+
+int hashtable_to_buffer(GHashTable *htb, upgrade_index_kv_t *buf, int size) {
+    assert(size >= g_hash_table_size(htb));
+    GHashTableIter iter;
+    gpointer k, v;
+    g_hash_table_iter_init(&iter, htb);
+    int i = 0;
+    while (g_hash_table_iter_next(&iter, &k, &v)) {
+        upgrade_index_kv_t *kv = buf + i;
+        memcpy(&kv->old_fp, k, sizeof(fingerprint));
+        memcpy(&kv->value, v, sizeof(upgrade_index_value_t));
+        i++;
+    }
+    return i;
 }
 
 /**
@@ -191,4 +217,26 @@ void upgrade_external_cache_insert_file(containerid id, GHashTable *htb) {
     }
     fseek(external_cache_file, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
     fwrite(kv, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
+}
+
+void upgrade_external_cache_insert_rocksdb(containerid id, GHashTable *htb) {
+    int size = hashtable_to_buffer(htb, external_file_buffer, MAX_CHUNK_PER_CONTAINER);
+    put_RocksDB(DB_UPGRADE, &id, sizeof(containerid), external_file_buffer, sizeof(upgrade_index_kv_t) * size);
+}
+
+int upgrade_external_cache_prefetch_rocksdb(containerid id) {
+    size_t valueSize;
+    upgrade_index_kv_t *kv;
+    get_RocksDB(DB_UPGRADE, &id, sizeof(containerid), &kv, &valueSize);
+    if (!kv) {
+        DEBUG("upgrade_external_cache_prefetch: The index container %lld has not been written!", id);
+        return 0;
+    }
+    if (valueSize % sizeof(upgrade_index_kv_t) != 0 || valueSize == 0) {
+        WARNING("Error! valueSize = %d", valueSize);
+        exit(1);
+    }
+    upgrade_fingerprint_cache_insert_buffer(id, kv, valueSize / sizeof(upgrade_index_kv_t));
+    free(kv);
+    return 1;
 }

@@ -4058,9 +4058,9 @@ fi
     if test "$thread_safe" = "no"; then
     as_fn_error $? "*** The version of glib is too low ***" "$LINENO" 5
     fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SHA_Update in -lcrypto" >&5
-$as_echo_n "checking for SHA_Update in -lcrypto... " >&6; }
-if ${ac_cv_lib_crypto_SHA_Update+:} false; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for SHA1_Update in -lcrypto" >&5
+$as_echo_n "checking for SHA1_Update in -lcrypto... " >&6; }
+if ${ac_cv_lib_crypto_SHA1_Update+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
@@ -4074,27 +4074,27 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char SHA_Update ();
+char SHA1_Update ();
 int
 main ()
 {
-return SHA_Update ();
+return SHA1_Update ();
   ;
   return 0;
 }
 _ACEOF
 if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_crypto_SHA_Update=yes
+  ac_cv_lib_crypto_SHA1_Update=yes
 else
-  ac_cv_lib_crypto_SHA_Update=no
+  ac_cv_lib_crypto_SHA1_Update=no
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_crypto_SHA_Update" >&5
-$as_echo "$ac_cv_lib_crypto_SHA_Update" >&6; }
-if test "x$ac_cv_lib_crypto_SHA_Update" = xyes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_crypto_SHA1_Update" >&5
+$as_echo "$ac_cv_lib_crypto_SHA1_Update" >&6; }
+if test "x$ac_cv_lib_crypto_SHA1_Update" = xyes; then :
   found_crypto=yes
 else
   found_crypto=no

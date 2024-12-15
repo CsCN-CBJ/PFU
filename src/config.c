@@ -182,6 +182,8 @@ void load_config_from_string(sds config, const char *sep) {
 				destor.index_key_value_store = INDEX_KEY_VALUE_ROR;
 			} else if (strcasecmp(argv[1], "file") == 0) {
 				destor.index_key_value_store = INDEX_KEY_VALUE_FILE;
+			} else if (strcasecmp(argv[1], "rocksdb") == 0) {
+				destor.index_key_value_store = INDEX_KEY_VALUE_ROCKSDB;
 			} else {
 				err = "Invalid key-value store";
 				goto loaderr;

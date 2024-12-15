@@ -555,7 +555,7 @@ void send_recipe_unit(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLR
 		}
 		WARNING("Send merge recipe end");
 	} else {
-		WARNING("Send %s %ld/%ld", unit->recipe->filename, unit->sub_id + 1, unit->total_num);
+		NOTICE("Send %s %ld/%ld", unit->recipe->filename, unit->sub_id + 1, unit->total_num);
 		send_one_recipe(queue, unit, featuresInLRU, lru);
 		// free(unit);
 	}

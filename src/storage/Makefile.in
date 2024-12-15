@@ -104,7 +104,8 @@ am__v_AR_0 = @echo "  AR      " $@;
 am__v_AR_1 = 
 libstorage_a_AR = $(AR) $(ARFLAGS)
 libstorage_a_LIBADD =
-am_libstorage_a_OBJECTS = containerstore.$(OBJEXT) db.$(OBJEXT)
+am_libstorage_a_OBJECTS = containerstore.$(OBJEXT) db.$(OBJEXT) \
+	rocks.$(OBJEXT)
 libstorage_a_OBJECTS = $(am_libstorage_a_OBJECTS)
 AM_V_P = $(am__v_P_@AM_V@)
 am__v_P_ = $(am__v_P_@AM_DEFAULT_V@)
@@ -190,7 +191,7 @@ INSTALL_SCRIPT = @INSTALL_SCRIPT@
 INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
 LDFLAGS = @LDFLAGS@
 LIBOBJS = @LIBOBJS@
-LIBS = -lglib -lhiredis
+LIBS = -lglib -lhiredis -lrocksdb
 LTLIBOBJS = @LTLIBOBJS@
 MAKEINFO = @MAKEINFO@
 MKDIR_P = @MKDIR_P@
@@ -252,7 +253,7 @@ top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 noinst_LIBRARIES = libstorage.a
-libstorage_a_SOURCES = containerstore.c db.c 
+libstorage_a_SOURCES = containerstore.c db.c rocks.c
 all: all-am
 
 .SUFFIXES:
@@ -303,6 +304,7 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/containerstore.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/db.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rocks.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
