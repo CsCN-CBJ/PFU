@@ -235,6 +235,10 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 #define CONTAINER_BUFFER_SIZE 100
 void* read_container_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "read_container");
+	if (destor.upgrade_recipe_only) {
+		sync_queue_term(upgrade_chunk_queue);
+		return NULL;
+	}
 	struct chunk *ck;
 	int64_t count = get_container_count();
 	struct container **buffer[CONTAINER_BUFFER_SIZE], *con;
@@ -456,17 +460,7 @@ void wait_jobs_done() {
 
 static void pre_process_args() {
 	destor.upgrade_external_store = destor.index_key_value_store;
-
-	// similarity
-	if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS) {
-		destor.upgrade_level = UPGRADE_SIMILARITY;
-		destor.upgrade_do_split_merge = TRUE;
-	} else if (destor.upgrade_level == UPGRADE_SIMILARITY_PLUS_REORDER) {
-		destor.upgrade_level = UPGRADE_SIMILARITY_REORDER;
-		destor.upgrade_do_split_merge = TRUE;
-	} else {
-		destor.upgrade_do_split_merge = FALSE;
-	}
+	destor.upgrade_external_store = INDEX_KEY_VALUE_ROCKSDB;
 
 	// CDC
 	if (destor.CDC_ratio != 0) {
@@ -485,11 +479,38 @@ static void pre_process_args() {
 		destor.external_cache_size = 0; // no limit
 		break;
 	case UPGRADE_2D_CONSTRAINED:
-	case UPGRADE_SIMILARITY:
 		break;
+	case UPGRADE_SIMILARITY:
+		destor.upgrade_similarity = 1;
+		break;
+	case UPGRADE_SIMILARITY_PLUS:
+		destor.upgrade_similarity = 1;
+		destor.upgrade_do_split_merge = 1;
 	case UPGRADE_2D_REORDER:
+		destor.upgrade_level = UPGRADE_2D_CONSTRAINED;
+		destor.upgrade_reorder = 1;
+		break;
 	case UPGRADE_SIMILARITY_REORDER:
 		destor.upgrade_reorder = 1;
+		destor.upgrade_similarity = 1;
+		break;
+	case UPGRADE_SIMILARITY_PLUS_REORDER:
+		destor.upgrade_reorder = 1;
+		destor.upgrade_similarity = 1;
+		destor.upgrade_do_split_merge = 1;
+		break;
+	case UPGRADE_1D_REORDER:
+		destor.upgrade_reorder = 1;
+		destor.upgrade_relation_level = 1;
+		break;
+	case UPGRADE_1D_SIMILARITY:
+		destor.upgrade_reorder = 1;
+		destor.upgrade_similarity = 1;
+		destor.upgrade_relation_level = 1;
+		destor.upgrade_do_split_merge = 1;
+		destor.CDC_max_size *= 900;
+		destor.CDC_exp_size *= 900;
+		destor.CDC_min_size *= 900;
 		break;
 	default:
 		assert(0);
@@ -503,17 +524,6 @@ static void pre_process_args() {
 
 void do_reorder_upgrade() {
 	pthread_t read_t, hash_t, dedup_t, filter_t, recipe_t;
-	switch (destor.upgrade_level)
-	{
-	case UPGRADE_2D_REORDER:
-		destor.upgrade_level = UPGRADE_2D_CONSTRAINED;
-		break;
-	case UPGRADE_SIMILARITY_REORDER:
-		destor.upgrade_level = UPGRADE_SIMILARITY;
-		break;
-	default:
-		assert(0);
-	}
 
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
@@ -544,7 +554,7 @@ void do_reorder_upgrade() {
     jcr.status = JCR_STATUS_RUNNING;
 	upgrade_recipe_queue = sync_queue_new(100);
 	hash_queue = sync_queue_new(100);
-	if (destor.upgrade_level == UPGRADE_SIMILARITY) {
+	if (destor.upgrade_similarity) {
 		pthread_create(&read_t, NULL, read_similarity_recipe_thread, (void *)1);
 	} else {
 		pthread_create(&read_t, NULL, read_recipe_batch_thread, NULL);

@@ -2,7 +2,7 @@
 #include "index.h"
 #include "../utils/lru_cache.h"
 #include "../storage/containerstore.h"
-#include "../storage/db.h"
+#include "../storage/rocks.h"
 #include "../jcr.h"
 
 extern struct index_overhead index_overhead;
@@ -17,6 +17,10 @@ static lruHashMap_t *upgrade_cache;
 
 void init_upgrade_index() {
     init_upgrade_external_cache();
+    if (destor.upgrade_relation_level == 1) {
+        init_upgrade_1D_fingerprint_cache();
+        return;
+    }
 	if (destor.fake_containers) {
 		upgrade_cache = new_lru_hashmap(destor.index_cache_size - 1, NULL, g_int64_hash, g_int64_equal);
 	} else {
@@ -30,6 +34,10 @@ void init_upgrade_index() {
 
 void close_upgrade_index() {
     close_upgrade_external_cache();
+    if (destor.upgrade_relation_level == 1) {
+        // pass
+        return;
+    }
     assert(g_hash_table_size(upgrade_processing) == 0);
     g_hash_table_destroy(upgrade_processing);
     g_hash_table_destroy(upgrade_container);
@@ -90,9 +98,9 @@ void upgrade_index_lookup_1D(struct chunk *c){
         /* Searching in key-value store */
         upgrade_index_value_t *v;
         size_t valueSize;
-        int ret = getDB(DB_UPGRADE, &c->old_fp, sizeof(fingerprint), &v, &valueSize);
+        get_RocksDB(DB_UPGRADE, &c->old_fp, sizeof(fingerprint), &v, &valueSize);
         upgrade_index_overhead.kvstore_lookup_requests++;
-        if(!ret) {
+        if(v) {
             assert(valueSize == sizeof(upgrade_index_value_t));
             upgrade_index_overhead.kvstore_hits++;
             upgrade_index_overhead.read_prefetching_units++;
@@ -207,7 +215,7 @@ int upgrade_index_lookup(struct chunk* c) {
     TIMER_DECLARE(1);
     TIMER_BEGIN(1);
 
-    if (destor.upgrade_level == UPGRADE_1D_RELATION) {
+    if (destor.upgrade_relation_level == 1) {
         upgrade_index_lookup_1D(c);
     } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
         upgrade_index_lookup_2D(c, &upgrade_index_overhead, 0);

@@ -18,6 +18,7 @@ void upgrade_external_cache_insert_htb(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_DB(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_file(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_rocksdb(containerid id, GHashTable *htb);
+void upgrade_external_cache_insert_rocksdb_1D(containerid id, GHashTable *htb);
 
 int upgrade_external_cache_prefetch_htb(containerid id);
 int upgrade_external_cache_prefetch_DB(containerid id);
@@ -57,8 +58,13 @@ void init_upgrade_external_cache() {
     }
     case INDEX_KEY_VALUE_ROCKSDB:
         init_RocksDB(DB_UPGRADE);
-        upgrade_external_cache_insert = upgrade_external_cache_insert_rocksdb;
-        upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_rocksdb;
+        if (destor.upgrade_relation_level == 1) {
+            upgrade_external_cache_insert = upgrade_external_cache_insert_rocksdb_1D;
+            upgrade_external_cache_prefetch = NULL;
+        } else {
+            upgrade_external_cache_insert = upgrade_external_cache_insert_rocksdb;
+            upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_rocksdb;
+        }
         break;
     default:
         assert(0);
@@ -217,6 +223,15 @@ void upgrade_external_cache_insert_file(containerid id, GHashTable *htb) {
     }
     fseek(external_cache_file, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
     fwrite(kv, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
+}
+
+void upgrade_external_cache_insert_rocksdb_1D(containerid id, GHashTable *htb) {
+    GHashTableIter iter;
+    gpointer k, v;
+    g_hash_table_iter_init(&iter, htb);
+    while (g_hash_table_iter_next(&iter, &k, &v)) {
+        put_RocksDB(DB_UPGRADE, k, sizeof(fingerprint), v, sizeof(upgrade_index_value_t));
+    }
 }
 
 void upgrade_external_cache_insert_rocksdb(containerid id, GHashTable *htb) {

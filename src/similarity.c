@@ -247,7 +247,11 @@ static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
 	// calculate features
 	for (j = 0; j < r->chunknum; j++) {
 		for (k = 0; k < FEATURE_NUM; k++) {
-			features[k] = MIN(features[k], CALC_FEATURE(cp[j].id, k));
+			if (destor.upgrade_relation_level == 1) {
+				features[k] = MIN(features[k], CALC_FEATURE(*(containerid *)(cp[j].fp), k));
+			} else {
+				features[k] = MIN(features[k], CALC_FEATURE(cp[j].id, k));
+			}
 		}
 	}
 
@@ -261,6 +265,9 @@ static int calculate_unique_container(recipeUnit_t *u, GHashTable *htb) {
 	if (!h) h = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 	for (int i = 0; i < u->recipe->chunknum; i++) {
 		containerid id = u->chunks[i].id;
+		if (destor.upgrade_relation_level == 1) {
+			id = *(containerid *)(u->chunks[i].fp);
+		}
 		if (g_hash_table_lookup(h, &id)) continue;
 		containerid *p = malloc(sizeof(containerid));
 		*p = id;
@@ -294,6 +301,9 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 
 			// 插入当前chunk
 			containerid id = u->chunks[i].id;
+			if (destor.upgrade_relation_level == 1) {
+				id = *(containerid *)(u->chunks[i].fp);
+			}
 			if (g_hash_table_lookup(cdcTable, &id)) continue;
 			containerid *p = malloc(sizeof(containerid));
 			*p = id;
@@ -312,7 +322,11 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 
 		// 继续插入重复chunk
 		for (; i < u->recipe->chunknum; i++) {
-			if (!g_hash_table_lookup(cdcTable, &u->chunks[i].id)) break;
+			containerid id = u->chunks[i].id;
+			if (destor.upgrade_relation_level == 1) {
+				id = *(containerid *)(u->chunks[i].fp);
+			}
+			if (!g_hash_table_lookup(cdcTable, &id)) break;
 		}
 
 		// 插入到recipeList
@@ -435,7 +449,7 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 void* pre_process_recipe_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "process_recipe");
 	// read all recipes and calculate features
-	if (destor.upgrade_level != UPGRADE_SIMILARITY) {
+	if (!destor.upgrade_similarity) {
 		return NULL;
 	}
 	TIMER_DECLARE(1);
@@ -449,7 +463,6 @@ void* pre_process_recipe_thread(void *arg) {
 }
 
 static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featuresInLRU[FEATURE_NUM], struct lruCache *lru) {
-	assert(destor.upgrade_level == UPGRADE_SIMILARITY);
 	
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
@@ -462,7 +475,11 @@ static void send_one_recipe(SyncQueue *queue, recipeUnit_t *unit, feature featur
 		unit->cks[i].size = cps[i].size;
 		// calculate features
 		for (int k = 0; k < FEATURE_NUM; k++) {
-			featuresInLRU[k] = MIN(featuresInLRU[k], CALC_FEATURE(cps[i].id, k));
+			if (destor.upgrade_relation_level == 1) {
+				featuresInLRU[k] = MIN(featuresInLRU[k], CALC_FEATURE(*(containerid *)(cps[i].fp), k));
+			} else {
+				featuresInLRU[k] = MIN(featuresInLRU[k], CALC_FEATURE(cps[i].id, k));
+			}
 		}
 	}
 	free(cps);
