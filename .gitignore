@@ -18,3 +18,8 @@ __pycache__/
 config.status
 autom4te.cache/
 Makefile.in
+missing
+compile
+depcomp
+install-sh
+aclocal.m4
