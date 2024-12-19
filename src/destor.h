@@ -30,8 +30,8 @@
 #include <glib.h>
 #include <getopt.h>
 
-// #include "utils/sds.h"
-#include <hiredis/hiredis.h>
+#include "utils/sds.h"
+// #include <hiredis/hiredis.h>
 #include "utils/cache.h"
 
 #define TIMER_DECLARE(n) struct timeval b##n,e##n

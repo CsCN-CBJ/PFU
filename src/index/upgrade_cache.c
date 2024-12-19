@@ -57,7 +57,7 @@ static void upgrade_index_update1(GSequence *chunks, int64_t id) {
         upgrade_index_overhead.kvstore_update_requests++;
         v.id = id;
         memcpy(&v.fp, &c->fp, sizeof(fingerprint));
-        setDB(DB_UPGRADE, &c->old_fp, sizeof(fingerprint), &v, sizeof(upgrade_index_value_t));
+        // setDB(DB_UPGRADE, &c->old_fp, sizeof(fingerprint), &v, sizeof(upgrade_index_value_t));
     }
 }
 

@@ -42,7 +42,8 @@ void init_upgrade_external_cache() {
         assert(0);
         break;
     case INDEX_KEY_VALUE_ROR:
-        initDB(DB_UPGRADE);
+        assert(0);
+        // initDB(DB_UPGRADE);
         upgrade_external_cache_insert = upgrade_external_cache_insert_DB;
         upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_DB;
         break;
@@ -82,7 +83,7 @@ void close_upgrade_external_cache() {
         assert(0);
         break;
     case INDEX_KEY_VALUE_ROR:
-        closeDB(DB_UPGRADE);
+        // closeDB(DB_UPGRADE);
         break;
     case INDEX_KEY_VALUE_FILE:
         fclose(external_cache_file);
@@ -133,11 +134,11 @@ int upgrade_external_cache_prefetch_file(containerid id) {
 int upgrade_external_cache_prefetch_DB(containerid id) {
 	upgrade_index_kv_t *kv; // sql insertion buffer
 	size_t valueSize;
-	int ret = getDB(DB_UPGRADE, &id, sizeof(containerid), &kv, &valueSize);
-	if (ret) {
-		DEBUG("upgrade_external_cache_prefetch: The index container %lld has not been written!", id);
-		return 0;
-	}
+	// int ret = getDB(DB_UPGRADE, &id, sizeof(containerid), &kv, &valueSize);
+	// if (ret) {
+	// 	DEBUG("upgrade_external_cache_prefetch: The index container %lld has not been written!", id);
+	// 	return 0;
+	// }
 	if (valueSize % sizeof(upgrade_index_kv_t) != 0 || valueSize == 0) {
 		WARNING("Error! valueSize = %d", valueSize);
 		exit(1);
@@ -201,7 +202,7 @@ void upgrade_external_cache_insert_DB(containerid id, GHashTable *htb) {
         memcpy(&kv_i->value, v, sizeof(upgrade_index_value_t));
         i++;
     }
-    setDB(DB_UPGRADE, &id, sizeof(containerid), kv, sizeof(upgrade_index_kv_t) * g_hash_table_size(htb));
+    // setDB(DB_UPGRADE, &id, sizeof(containerid), kv, sizeof(upgrade_index_kv_t) * g_hash_table_size(htb));
     free(kv);
 }
 
