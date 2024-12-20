@@ -13,21 +13,15 @@ remake
 [[ "$*" =~ "-chk" ]] && chk=1 || chk=0
 [[ "$*" =~ "-bkp" ]] && bkp=1 || bkp=0
 
-set -x
+set -ex
 if [[ $bkp == 1 ]]; then
 
     resetAll
-        
-    redis-cli -p 6666 FLUSHALL
-    redis-cli -p 6667 FLUSHALL
 
     set -x
     # basic test
     mkdir -p ${DST_DIR}${RESTORE_ID}
-    ./destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
-    mkdir -p ${WORKING_DIR}_bak
-    cp ${WORKING_DIR}/destor.stat ${WORKING_DIR}_bak
-    cp ${WORKING_DIR}/recipes/backupversion.count ${WORKING_DIR}_bak
+    ./destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/0.log
 
     if [ $chk -eq 1 ]; then
         ./destor -r0 ${DST_DIR}${RESTORE_ID} "${CONFIG}"
@@ -39,17 +33,18 @@ let ++RESTORE_ID
 
 function update() {
     # update test
-    redis-cli -p 6666 FLUSHALL
-    redis-cli -p 6667 FLUSHALL
+    cat ~/.ssh/passwd | sudo -S ./flush.sh
     rm -f ${WORKING_DIR}/container.pool_new
     rm -f ${WORKING_DIR}/recipes/bv1*
-    cp ${WORKING_DIR}_bak/destor.stat ${WORKING_DIR}
-    cp ${WORKING_DIR}_bak/backupversion.count ${WORKING_DIR}/recipes
+    # rm -f ${WORKING_DIR}/upgrade_external_cache
+    rm -f ${WORKING_DIR}/kvstore_file
+    # rm -rf ${WORKING_DIR}/rocksdb0
     
-    mkdir -p ${DST_DIR}${RESTORE_ID}
-    ./destor -u0 ${SRC_DIR} -i"$1" "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
+    ./destor -u0 ${SRC_DIR} -i"$1" "${CONFIG}" > ${LOG_DIR}/$1.log
+    echo $?
 
     if [ $chk -eq 1 ]; then
+        mkdir -p ${DST_DIR}${RESTORE_ID}
         # rm ${WORKING_DIR}/container.pool
         ./destor -n1 ${DST_DIR}${RESTORE_ID} "${CONFIG}"
     fi

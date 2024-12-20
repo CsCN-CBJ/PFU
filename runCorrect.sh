@@ -27,8 +27,6 @@ mkdir -p ${DST_DIR}${RESTORE_ID}
 let ++RESTORE_ID
 
 # update test
-redis-cli -p 6666 FLUSHALL
-redis-cli -p 6667 FLUSHALL
 mkdir -p ${DST_DIR}${RESTORE_ID}
 ./destor -u0 ${SRC_DIR} -i$1 "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
 rm ${WORKING_DIR}/container.pool
