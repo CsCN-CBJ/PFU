@@ -28,7 +28,12 @@ void init_RocksDB(int index) {
     // set block
     rocksdb_block_based_table_options_t *table_options = rocksdb_block_based_options_create();
     rocksdb_block_based_options_set_block_size(table_options, 64 * 1024);
+    rocksdb_block_based_options_set_no_block_cache(table_options, 0);
     rocksdb_options_set_block_based_table_factory(options, table_options);
+    rocksdb_options_set_use_direct_reads(options, 1);
+
+    rocksdb_options_set_compression(options, rocksdb_no_compression);
+    rocksdb_options_set_write_buffer_size(options, 64 * 1024);
 
     // Optimize RocksDB. This is the easiest way to
     // get RocksDB to perform well.
@@ -41,6 +46,7 @@ void init_RocksDB(int index) {
     dbList[index] = rocksdb_open(options, path, &err);
     assert(!err);
     rocksdb_options_destroy(options);
+    rocksdb_block_based_options_destroy(table_options);
 }
 
 void close_RocksDB(int index) {
