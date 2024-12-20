@@ -897,23 +897,11 @@ void* filter_thread_container(void* arg) {
 
         // container end
         pthread_mutex_lock(&upgrade_index_lock.mutex);
-        // TODO: 删除upgrade_storage_buffer 考虑在external里面free htb
-        // 保证包含当前container_buffer的container永远不会被LRU刷下去
-        if (upgrade_storage_buffer) {
-            if (destor.upgrade_reorder) {
-                // 如果是重排的upgrade, 则不需要插入memory cache
-                g_hash_table_destroy(upgrade_storage_buffer);
-            } else {
-                upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
-            }
-        }
-        upgrade_storage_buffer = htb;
-        upgrade_storage_buffer_id = id;
         // insert into external cache
+        DEBUG("Process container %ld, %ld chunks", id, g_hash_table_size(htb));
         upgrade_external_cache_insert(id, htb);
         pthread_mutex_unlock(&upgrade_index_lock.mutex);
 
-        DEBUG("Process container %ld, %ld chunks", id, g_hash_table_size(htb));
         htb = NULL;
         free_container(con);
         TIMER_END(1, jcr.filter_time);
