@@ -12,6 +12,7 @@ int (*upgrade_external_cache_prefetch)(containerid id);
 #define MAX_CHUNK_PER_CONTAINER 1200
 static lruHashMap_t *external_cache_htb;
 FILE *external_cache_file;
+int external_cache_fd;
 upgrade_index_kv_t *external_file_buffer;
 
 void upgrade_external_cache_insert_htb(containerid id, GHashTable *htb);
@@ -26,7 +27,12 @@ int upgrade_external_cache_prefetch_file(containerid id);
 int upgrade_external_cache_prefetch_rocksdb(containerid id);
 
 void init_upgrade_external_cache() {
-    external_file_buffer = malloc(sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER);
+    // external_file_buffer = malloc(sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER);
+    int ret = posix_memalign(&external_file_buffer, 4096, sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER * 2);
+    if (ret != 0) {
+        perror("posix_memalign");
+        return 1;
+    }
     switch (destor.upgrade_external_store)
     {
     case INDEX_KEY_VALUE_HTABLE:
@@ -50,7 +56,18 @@ void init_upgrade_external_cache() {
     case INDEX_KEY_VALUE_FILE: {
         sds path = sdsdup(destor.working_directory);
         path = sdscat(path, "/upgrade_external_cache");
-        external_cache_file = fopen(path, "w+");
+        if (destor.upgrade_recipe_only) {
+            // external_cache_file = fopen(path, "r+");
+            external_cache_fd = open(path, O_RDWR | __O_DIRECT);
+            if (external_cache_fd == -1) {
+                perror("open");
+                return 1;
+            }
+        } else {
+            // external_cache_file = fopen(path, "w+");
+            external_cache_fd = open(path, O_RDWR | O_CREAT, 0666);
+        }
+        assert(external_cache_fd);
         sdsfree(path);
 
         upgrade_external_cache_insert = upgrade_external_cache_insert_file;
@@ -86,7 +103,7 @@ void close_upgrade_external_cache() {
         // closeDB(DB_UPGRADE);
         break;
     case INDEX_KEY_VALUE_FILE:
-        fclose(external_cache_file);
+        close(external_cache_fd);
         break;
     case INDEX_KEY_VALUE_ROCKSDB:
         close_RocksDB(DB_UPGRADE);
@@ -111,23 +128,39 @@ int hashtable_to_buffer(GHashTable *htb, upgrade_index_kv_t *buf, int size) {
     return i;
 }
 
+#define CEIL(x, y) (((x) + (y) - 1) / (y))
+#define FLOOR(x, y) ((x) / (y))
+
 /**
  * prefetch external cache
  * return 0 if not found
 */
 int upgrade_external_cache_prefetch_file(containerid id) {
     assert(MAX_CHUNK_PER_CONTAINER > CONTAINER_META_SIZE / 28); // min sizof(struct metaEntry) = 28
-    fseek(external_cache_file, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
-    size_t read_size = fread(external_file_buffer, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
+    // fseek(external_cache_file, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
+    // size_t read_size = fread(external_file_buffer, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
+    // lseek(external_cache_fd, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
+    size_t addr = id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER;
+    size_t floor = FLOOR(addr, 4096) * 4096;
+    lseek(external_cache_fd, floor, SEEK_SET);
+    size_t rSize = CEIL((id + 1) * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, 4096) * 4096 - floor;
+    size_t read_size = read(external_cache_fd, external_file_buffer, rSize);
     if (read_size == 0) {
         return 0;
     }
-    assert(read_size == MAX_CHUNK_PER_CONTAINER); // 会先处理完再读, 所以一定能读到MAX_CHUNK_PER_CONTAINER
+    if (read_size == -1) {
+        perror("read external cache file");
+        exit(1);
+    }
+    // assert(read_size == MAX_CHUNK_PER_CONTAINER); // 会先处理完再读, 所以一定能读到MAX_CHUNK_PER_CONTAINER
+    // fprintf(stderr, "read_size = %d\n", read_size);
+    assert(read_size <= rSize && read_size > rSize - 4096);
+    // assert(read_size == rSize);
 
-    upgrade_index_kv_t *kv = external_file_buffer;
+    upgrade_index_kv_t *kv = (upgrade_index_kv_t *)((char *)external_file_buffer + (id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER) % 4096);
     assert(memcmp(&kv->old_fp, &id, sizeof(containerid)) == 0);
     int chunk_num = kv->value.id;
-    upgrade_fingerprint_cache_insert_buffer(id, external_file_buffer + 1, chunk_num);
+    upgrade_fingerprint_cache_insert_buffer(id, kv + 1, chunk_num);
     return 1;
 }
 
@@ -222,8 +255,10 @@ void upgrade_external_cache_insert_file(containerid id, GHashTable *htb) {
         memcpy(&kv_i->value, v, sizeof(upgrade_index_value_t));
         i++;
     }
-    fseek(external_cache_file, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
-    fwrite(kv, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
+    // fseek(external_cache_file, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
+    // fwrite(kv, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
+    lseek(external_cache_fd, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
+    write(external_cache_fd, kv, sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER);
 }
 
 void upgrade_external_cache_insert_rocksdb_1D(containerid id, GHashTable *htb) {
