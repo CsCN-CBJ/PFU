@@ -5,6 +5,12 @@
 #include "../storage/containerstore.h"
 #include "../jcr.h"
 
+#define CEIL(x, y) (((x) + (y) - 1) / (y))
+#define FLOOR(x, y) ((x) / (y))
+
+/**
+ * insert hashtable into external cache, the hashtable will be freed
+ */
 void (*upgrade_external_cache_insert)(containerid id, GHashTable *htb);
 int (*upgrade_external_cache_prefetch)(containerid id);
 
@@ -13,7 +19,7 @@ int (*upgrade_external_cache_prefetch)(containerid id);
 static lruHashMap_t *external_cache_htb;
 FILE *external_cache_file;
 int external_cache_fd;
-upgrade_index_kv_t *external_file_buffer;
+upgrade_index_kv_t *rBuffer, *wBuffer;
 
 void upgrade_external_cache_insert_htb(containerid id, GHashTable *htb);
 // void upgrade_external_cache_insert_DB(containerid id, GHashTable *htb);
@@ -27,8 +33,8 @@ int upgrade_external_cache_prefetch_file(containerid id);
 int upgrade_external_cache_prefetch_rocksdb(containerid id);
 
 void init_upgrade_external_cache() {
-    // external_file_buffer = malloc(sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER);
-    int ret = posix_memalign(&external_file_buffer, 4096, sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER * 2);
+    wBuffer = malloc(sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER);
+    int ret = posix_memalign(&rBuffer, 4096, sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER * 2);
     if (ret != 0) {
         perror("posix_memalign");
         return 1;
@@ -90,7 +96,8 @@ void init_upgrade_external_cache() {
 }
 
 void close_upgrade_external_cache() {
-    free(external_file_buffer);
+    free(rBuffer);
+    free(wBuffer);
     switch (destor.upgrade_external_store)
     {
     case INDEX_KEY_VALUE_HTABLE:
@@ -128,9 +135,6 @@ int hashtable_to_buffer(GHashTable *htb, upgrade_index_kv_t *buf, int size) {
     return i;
 }
 
-#define CEIL(x, y) (((x) + (y) - 1) / (y))
-#define FLOOR(x, y) ((x) / (y))
-
 /**
  * prefetch external cache
  * return 0 if not found
@@ -144,7 +148,7 @@ int upgrade_external_cache_prefetch_file(containerid id) {
     size_t floor = FLOOR(addr, 4096) * 4096;
     lseek(external_cache_fd, floor, SEEK_SET);
     size_t rSize = CEIL((id + 1) * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, 4096) * 4096 - floor;
-    size_t read_size = read(external_cache_fd, external_file_buffer, rSize);
+    size_t read_size = read(external_cache_fd, rBuffer, rSize);
     if (read_size == 0) {
         return 0;
     }
@@ -157,7 +161,7 @@ int upgrade_external_cache_prefetch_file(containerid id) {
     assert(read_size <= rSize && read_size > rSize - 4096);
     // assert(read_size == rSize);
 
-    upgrade_index_kv_t *kv = (upgrade_index_kv_t *)((char *)external_file_buffer + (id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER) % 4096);
+    upgrade_index_kv_t *kv = (upgrade_index_kv_t *)((char *)rBuffer + (id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER) % 4096);
     assert(memcmp(&kv->old_fp, &id, sizeof(containerid)) == 0);
     int chunk_num = kv->value.id;
     upgrade_fingerprint_cache_insert_buffer(id, kv + 1, chunk_num);
@@ -241,20 +245,11 @@ void upgrade_external_cache_insert_DB(containerid id, GHashTable *htb) {
 
 void upgrade_external_cache_insert_file(containerid id, GHashTable *htb) {
     assert(g_hash_table_size(htb) <= MAX_CHUNK_PER_CONTAINER - 1);
-    upgrade_index_kv_t *kv = external_file_buffer;
+    upgrade_index_kv_t *kv = wBuffer;
     kv->value.id = g_hash_table_size(htb);
     memcpy(&kv->old_fp, &id, sizeof(containerid));
 
-    GHashTableIter iter;
-    gpointer k, v;
-    g_hash_table_iter_init(&iter, htb);
-    int i = 1;
-    while (g_hash_table_iter_next(&iter, &k, &v)) {
-        upgrade_index_kv_t *kv_i = kv + i;
-        memcpy(&kv_i->old_fp, k, sizeof(fingerprint));
-        memcpy(&kv_i->value, v, sizeof(upgrade_index_value_t));
-        i++;
-    }
+    hashtable_to_buffer(htb, kv + 1, g_hash_table_size(htb));
     // fseek(external_cache_file, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
     // fwrite(kv, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
     lseek(external_cache_fd, id * sizeof(upgrade_index_kv_t) * MAX_CHUNK_PER_CONTAINER, SEEK_SET);
@@ -271,8 +266,8 @@ void upgrade_external_cache_insert_rocksdb_1D(containerid id, GHashTable *htb) {
 }
 
 void upgrade_external_cache_insert_rocksdb(containerid id, GHashTable *htb) {
-    int size = hashtable_to_buffer(htb, external_file_buffer, MAX_CHUNK_PER_CONTAINER);
-    put_RocksDB(DB_UPGRADE, &id, sizeof(containerid), external_file_buffer, sizeof(upgrade_index_kv_t) * size);
+    int size = hashtable_to_buffer(htb, wBuffer, MAX_CHUNK_PER_CONTAINER);
+    put_RocksDB(DB_UPGRADE, &id, sizeof(containerid), wBuffer, sizeof(upgrade_index_kv_t) * size);
 }
 
 int upgrade_external_cache_prefetch_rocksdb(containerid id) {
