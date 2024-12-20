@@ -97,7 +97,8 @@ void init_container_store() {
 
 void wait_append_thread() {
 	sync_queue_term(container_buffer);
-	// fsync(fileno(new_fp));
+	fflush(new_fp);
+	fsync(fileno(new_fp));
 	pthread_join(append_t, NULL);
 }
 

@@ -10,7 +10,7 @@
 #include "index/upgrade_cache.h"
 #include "similarity.h"
 
-#define QUEUE_SIZE 1000
+#define QUEUE_SIZE 10
 /* defined in index.c */
 extern struct index_overhead index_overhead, upgrade_index_overhead;
 extern GHashTable *upgrade_processing;
@@ -143,6 +143,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 		int is_new;
 		// 将需要读取的container放到conList中
 		if (cm && destor.external_cache_size > 0) {
+			assert(0);
 			assert(cm->old_id == c->id);
 			conList = malloc(sizeof(struct container *) * cm->container_num);
 			DEBUG("Read new container %ld %ld %d", c->id, cm->new_id, cm->container_num);
@@ -472,6 +473,7 @@ static void pre_process_args() {
 	assert(destor.CDC_exp_size >= destor.CDC_min_size);
 	assert(destor.CDC_min_size > 0);
 
+	destor.upgrade_relation_level = 2;
 	switch (destor.upgrade_level) {
 	case UPGRADE_NAIVE:
 	case UPGRADE_1D_RELATION:
@@ -552,8 +554,8 @@ void do_reorder_upgrade() {
 
 	puts("==== upgrade recipe begin ====");
     jcr.status = JCR_STATUS_RUNNING;
-	upgrade_recipe_queue = sync_queue_new(100);
-	hash_queue = sync_queue_new(100);
+	upgrade_recipe_queue = sync_queue_new(QUEUE_SIZE);
+	hash_queue = sync_queue_new(QUEUE_SIZE);
 	if (destor.upgrade_similarity) {
 		pthread_create(&read_t, NULL, read_similarity_recipe_thread, (void *)1);
 	} else {

@@ -15,13 +15,13 @@ FILE *external_cache_file;
 upgrade_index_kv_t *external_file_buffer;
 
 void upgrade_external_cache_insert_htb(containerid id, GHashTable *htb);
-void upgrade_external_cache_insert_DB(containerid id, GHashTable *htb);
+// void upgrade_external_cache_insert_DB(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_file(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_rocksdb(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_rocksdb_1D(containerid id, GHashTable *htb);
 
 int upgrade_external_cache_prefetch_htb(containerid id);
-int upgrade_external_cache_prefetch_DB(containerid id);
+// int upgrade_external_cache_prefetch_DB(containerid id);
 int upgrade_external_cache_prefetch_file(containerid id);
 int upgrade_external_cache_prefetch_rocksdb(containerid id);
 
@@ -44,8 +44,8 @@ void init_upgrade_external_cache() {
     case INDEX_KEY_VALUE_ROR:
         assert(0);
         // initDB(DB_UPGRADE);
-        upgrade_external_cache_insert = upgrade_external_cache_insert_DB;
-        upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_DB;
+        // upgrade_external_cache_insert = upgrade_external_cache_insert_DB;
+        // upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_DB;
         break;
     case INDEX_KEY_VALUE_FILE: {
         sds path = sdsdup(destor.working_directory);

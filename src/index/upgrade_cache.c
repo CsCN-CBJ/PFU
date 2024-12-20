@@ -81,6 +81,8 @@ void upgrade_index_lookup_1D(struct chunk *c){
     */
 
     /* Check the fingerprint cache */
+    TIMER_DECLARE(1);
+    TIMER_BEGIN(1);
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in fingerprint cache */
         upgrade_index_value_t* v = upgrade_1D_fingerprint_cache_lookup(&c->old_fp);
@@ -93,7 +95,9 @@ void upgrade_index_lookup_1D(struct chunk *c){
             SET_CHUNK(c, CHUNK_DUPLICATE);
         }
     }
+    TIMER_END(1, jcr.memory_cache_time);
 
+    TIMER_BEGIN(1);
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         /* Searching in key-value store */
         upgrade_index_value_t *v;
@@ -112,6 +116,7 @@ void upgrade_index_lookup_1D(struct chunk *c){
             free(v);
         }
     }
+    TIMER_END(1, jcr.external_cache_time);
 
     if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
         upgrade_index_overhead.lookup_requests_for_unique++;
@@ -219,7 +224,7 @@ int upgrade_index_lookup(struct chunk* c) {
         upgrade_index_lookup_1D(c);
     } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
         upgrade_index_lookup_2D(c, &upgrade_index_overhead, 0);
-    } else if (destor.upgrade_level == UPGRADE_SIMILARITY || destor.upgrade_level == UPGRADE_2D_CONSTRAINED) {
+    } else if (destor.upgrade_relation_level == 2) {
         upgrade_index_lookup_2D(c, &upgrade_index_overhead, 1);
     } else {
         assert(0);
