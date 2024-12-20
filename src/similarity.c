@@ -356,7 +356,7 @@ GHashTable *featureTable[FEATURE_NUM];
 int recipe_num = 0;
 
 static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[FEATURE_NUM]) {
-	assert(destor.CDC_max_size >= 2 * destor.CDC_min_size); // 确保两个小文件合并后不会超过最大容量
+	// assert(destor.CDC_max_size >= 2 * destor.CDC_min_size); // 确保两个小文件合并后不会超过最大容量
 	DynamicArray *array = dynamic_array_new();
 	GHashTable *cacheTable = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
 	recipeUnit_t *cacheListHead = NULL;
@@ -381,7 +381,8 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 			continue;
 		}
 
-		if (unique_num < destor.CDC_min_size) {
+		if (unique_num < destor.CDC_min_size && 0) {
+			assert(0); // 1D not supported
 			// merge files
 			if (!cacheListHead) {
 				cacheListHead = u;

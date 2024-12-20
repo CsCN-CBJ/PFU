@@ -46,14 +46,6 @@ static void flush_container() {
     // index_update(features, get_container_id(storage_buffer.container_buffer));
     index_update_kvstore(storage_buffer.chunkArray, get_container_id(storage_buffer.container_buffer));
 
-    // do_update index
-    if (job == DESTOR_UPDATE && destor.upgrade_level == UPGRADE_1D_RELATION) {
-        pthread_mutex_lock(&upgrade_index_lock.mutex);
-        assert(0);
-        // upgrade_index_update(storage_buffer.chunks, get_container_id(storage_buffer.container_buffer));
-        pthread_mutex_unlock(&upgrade_index_lock.mutex);
-    }
-
     // g_hash_table_destroy(features);
     // g_sequence_free(storage_buffer.chunks);
     // storage_buffer.chunks = g_sequence_new(free_chunk);
@@ -296,10 +288,10 @@ static void* filter_thread(void *arg) {
             assert(c->id != TEMPORARY_ID);
 
             /* Collect historical information. */
-            har_monitor_update(c->id, c->size);
+            // har_monitor_update(c->id, c->size);
 
             /* Restore-aware */
-            restore_aware_update(c->id, c->size);
+            // restore_aware_update(c->id, c->size);
 
             chunk_num++;
         }
@@ -499,7 +491,7 @@ static void* filter_thread_2D(void* arg) {
 			in_container = FALSE;
             assert(c->id>=0);
             pthread_mutex_lock(&upgrade_index_lock.mutex);
-            setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
+            // setDB(DB_UPGRADE, (char *)&c->id, sizeof(containerid), (char *)kv, kv_num * sizeof(upgrade_index_kv_t));
             if (upgrade_storage_buffer) {
                 upgrade_fingerprint_cache_insert(upgrade_storage_buffer_id, upgrade_storage_buffer);
             }
@@ -1020,7 +1012,7 @@ void start_filter_phase() {
 
 	storage_buffer.container_buffer = NULL;
 
-    init_restore_aware();
+    // init_restore_aware();
 
     if (job == DESTOR_UPDATE) {
         if (destor.upgrade_level == UPGRADE_2D_RELATION) 
