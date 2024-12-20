@@ -62,6 +62,8 @@ void load_config_from_string(sds config, const char *sep) {
 			}
 		} else if (strcasecmp(argv[0], "fake-containers") == 0 && argc == 2) {
 			destor.fake_containers = atoi(argv[1]);
+		} else if (strcasecmp(argv[0], "upgrade-phase") == 0 && argc == 2) {
+			destor.upgrade_phase = atoi(argv[1]);
 		} else if (strcasecmp(argv[0], "trace-format") == 0 && argc == 2) {
             if (strcasecmp(argv[1], "destor") == 0) {
 				destor.trace_format = TRACE_DESTOR;

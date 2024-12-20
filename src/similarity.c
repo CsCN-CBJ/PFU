@@ -448,6 +448,7 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 }
 
 void* pre_process_recipe_thread(void *arg) {
+	fprintf(stderr, "pre_process_recipe_thread\n");
 	pthread_setname_np(pthread_self(), "process_recipe");
 	// read all recipes and calculate features
 	if (!destor.upgrade_similarity) {

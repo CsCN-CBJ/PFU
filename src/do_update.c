@@ -236,10 +236,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 #define CONTAINER_BUFFER_SIZE 100
 void* read_container_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "read_container");
-	if (destor.upgrade_recipe_only) {
-		sync_queue_term(upgrade_chunk_queue);
-		return NULL;
-	}
+
 	struct chunk *ck;
 	int64_t count = get_container_count();
 	struct container **buffer[CONTAINER_BUFFER_SIZE], *con;
@@ -524,13 +521,13 @@ static void pre_process_args() {
 	WARNING("cache size %d %d", destor.index_cache_size, destor.external_cache_size);
 }
 
-void do_reorder_upgrade() {
-	pthread_t read_t, hash_t, dedup_t, filter_t, recipe_t;
+void do_reorder_upgrade_container() {
+	pthread_t read_t, hash_t, filter_t, recipe_t;
 
 	TIMER_DECLARE(1);
 	TIMER_BEGIN(1);
 	puts("==== upgrade container begin ====");
-    jcr.status = JCR_STATUS_RUNNING;
+	jcr.status = JCR_STATUS_RUNNING;
 	upgrade_chunk_queue = sync_queue_new(QUEUE_SIZE);
 	hash_queue = sync_queue_new(QUEUE_SIZE);
 	pthread_create(&read_t, NULL, read_container_thread, NULL);
@@ -551,9 +548,15 @@ void do_reorder_upgrade() {
 	jcr.container_filter_time = jcr.filter_time;
 	jcr.filter_time = 0;
 	jcr.container_processed = 1;
+}
 
+void do_reorder_upgrade_recipe() {
+	pthread_t read_t, dedup_t, filter_t;
+
+	TIMER_DECLARE(1);
+	TIMER_BEGIN(1);
 	puts("==== upgrade recipe begin ====");
-    jcr.status = JCR_STATUS_RUNNING;
+	jcr.status = JCR_STATUS_RUNNING;
 	upgrade_recipe_queue = sync_queue_new(QUEUE_SIZE);
 	hash_queue = sync_queue_new(QUEUE_SIZE);
 	if (destor.upgrade_similarity) {
@@ -571,13 +574,40 @@ void do_reorder_upgrade() {
 	pthread_join(read_t, NULL);
 	pthread_join(dedup_t, NULL);
 	pthread_join(filter_t, NULL);
+	TIMER_END(1, jcr.recipe_time);
+}
+
+void do_reorder_upgrade() {
+
+	TIMER_DECLARE(1);
+	TIMER_BEGIN(1);
+	switch (destor.upgrade_phase)
+	{
+	case 0:
+		do_reorder_upgrade_container();
+		do_reorder_upgrade_recipe();
+		break;
+	case 1:
+		do_reorder_upgrade_container();
+		break;
+	case 2: {
+		pthread_t recipe_t;
+		pthread_create(&recipe_t, NULL, pre_process_recipe_thread, NULL);
+		pthread_join(recipe_t, NULL);
+		jcr.container_processed = 1;
+		do_reorder_upgrade_recipe();
+		break;
+	}
+	default:
+		assert(0);
+		break;
+	}
 
 	upgrade_recipe_meta(jcr.bv, jcr.new_bv);
 	free_backup_version(jcr.bv);
 	free_backup_version(jcr.new_bv);
 
 	TIMER_END(1, jcr.total_time);
-	jcr.recipe_time = jcr.total_time - jcr.pre_process_container_time;
 	end_update();
 }
 

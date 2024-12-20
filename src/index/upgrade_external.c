@@ -18,8 +18,8 @@ int (*upgrade_external_cache_prefetch)(containerid id);
 #define MAX_CHUNK_PER_CONTAINER 1200
 #define RELATION_CONTAINER_SIZE (MAX_CHUNK_PER_CONTAINER * sizeof(upgrade_index_kv_t))
 static lruHashMap_t *external_cache_htb;
-FILE *external_cache_file;
-int external_cache_fd;
+FILE *external_cache_file = NULL;
+int external_cache_fd = -1;
 upgrade_index_kv_t *rBuffer, *wBuffer;
 
 void upgrade_external_cache_insert_htb(containerid id, GHashTable *htb);
@@ -63,18 +63,23 @@ void init_upgrade_external_cache() {
     case INDEX_KEY_VALUE_FILE: {
         sds path = sdsdup(destor.working_directory);
         path = sdscat(path, "/upgrade_external_cache");
-        if (destor.upgrade_recipe_only) {
-            // external_cache_file = fopen(path, "r+");
-            external_cache_fd = open(path, O_RDWR | __O_DIRECT);
-            if (external_cache_fd == -1) {
-                perror("open");
-                return 1;
-            }
-        } else {
-            // external_cache_file = fopen(path, "w+");
-            external_cache_fd = open(path, O_RDWR | O_CREAT, 0666);
+        switch (destor.upgrade_phase)
+        {
+        case 0:
+            external_cache_file = fopen(path, "w+");
+            external_cache_fd = fileno(external_cache_file);
+            break;
+        case 1:
+            external_cache_file = fopen(path, "w");
+            break;
+        case 2:
+            external_cache_fd = open(path, O_RDONLY | __O_DIRECT);
+            break;
+        default:
+            assert(0);
+            break;
         }
-        assert(external_cache_fd);
+        assert(external_cache_file || external_cache_fd != -1);
         sdsfree(path);
 
         upgrade_external_cache_insert = upgrade_external_cache_insert_file;
@@ -111,7 +116,11 @@ void close_upgrade_external_cache() {
         // closeDB(DB_UPGRADE);
         break;
     case INDEX_KEY_VALUE_FILE:
-        close(external_cache_fd);
+        if (external_cache_file) {
+            fclose(external_cache_file);
+        } else {
+            close(external_cache_fd);
+        }
         break;
     case INDEX_KEY_VALUE_ROCKSDB:
         close_RocksDB(DB_UPGRADE);
@@ -252,10 +261,8 @@ void upgrade_external_cache_insert_file(containerid id, GHashTable *htb) {
     memcpy(&kv->old_fp, &id, sizeof(containerid));
 
     hashtable_to_buffer(htb, kv + 1, g_hash_table_size(htb));
-    // fseek(external_cache_file, id * RELATION_CONTAINER_SIZE, SEEK_SET);
-    // fwrite(kv, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
-    lseek(external_cache_fd, id * RELATION_CONTAINER_SIZE, SEEK_SET);
-    write(external_cache_fd, kv, RELATION_CONTAINER_SIZE);
+    fseek(external_cache_file, id * RELATION_CONTAINER_SIZE, SEEK_SET);
+    fwrite(kv, sizeof(upgrade_index_kv_t), MAX_CHUNK_PER_CONTAINER, external_cache_file);
     g_hash_table_destroy(htb);
 }
 
