@@ -33,12 +33,12 @@ let ++RESTORE_ID
 
 function update() {
     # update test
-    cat ~/.ssh/passwd | sudo -S ./flush.sh
     rm -f ${WORKING_DIR}/container.pool_new
     rm -f ${WORKING_DIR}/recipes/bv1*
     # rm -f ${WORKING_DIR}/upgrade_external_cache
     rm -f ${WORKING_DIR}/kvstore_file
-    # rm -rf ${WORKING_DIR}/rocksdb0
+    rm -rf ${WORKING_DIR}/rocksdb0
+    cat ~/.ssh/passwd | sudo -S ./flush.sh
     
     ./destor -u0 ${SRC_DIR} -i"$1" "${CONFIG}" > ${LOG_DIR}/$1.log
     echo $?

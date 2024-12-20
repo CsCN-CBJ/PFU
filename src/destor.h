@@ -252,7 +252,7 @@ struct destor {
 	int upgrade_level;
 	int upgrade_do_split_merge;
 	int upgrade_reorder;
-	int upgrade_recipe_only;
+	int upgrade_phase; // 0: container + recipe, 1: container, 2: recipe
 	int upgrade_similarity;
 	int upgrade_relation_level;
 

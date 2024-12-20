@@ -190,6 +190,20 @@ void load_config_from_string(sds config, const char *sep) {
 				err = "Invalid key-value store";
 				goto loaderr;
 			}
+		} else if (strcasecmp(argv[0], "upgrade-external-store") == 0
+				&& argc == 2) {
+			if (strcasecmp(argv[1], "htable") == 0) {
+				destor.upgrade_external_store = INDEX_KEY_VALUE_HTABLE;
+			} else if (strcasecmp(argv[1], "ror") == 0) {
+				destor.upgrade_external_store = INDEX_KEY_VALUE_ROR;
+			} else if (strcasecmp(argv[1], "file") == 0) {
+				destor.upgrade_external_store = INDEX_KEY_VALUE_FILE;
+			} else if (strcasecmp(argv[1], "rocksdb") == 0) {
+				destor.upgrade_external_store = INDEX_KEY_VALUE_ROCKSDB;
+			} else {
+				err = "Invalid key-value store";
+				goto loaderr;
+			}
 		} else if (strcasecmp(argv[0], "fingerprint-index-key-size") == 0
 				&& argc == 2) {
 			destor.index_key_size = atoi(argv[1]);

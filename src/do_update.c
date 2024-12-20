@@ -457,8 +457,6 @@ void wait_jobs_done() {
 }
 
 static void pre_process_args() {
-	destor.upgrade_external_store = destor.index_key_value_store;
-	destor.upgrade_external_store = INDEX_KEY_VALUE_ROCKSDB;
 
 	// CDC
 	if (destor.CDC_ratio != 0) {
@@ -515,10 +513,6 @@ static void pre_process_args() {
 		assert(0);
 		break;
 	}
-
-	WARNING("CDC %d %d %d", destor.CDC_min_size, destor.CDC_exp_size, destor.CDC_max_size);
-	WARNING("Simulation level %d", destor.simulation_level);
-	WARNING("cache size %d %d", destor.index_cache_size, destor.external_cache_size);
 }
 
 void do_reorder_upgrade_container() {
@@ -611,6 +605,25 @@ void do_reorder_upgrade() {
 	end_update();
 }
 
+void record_args() {
+	WARNING("job id: %d", jcr.id);
+	WARNING("new job id: %d", jcr.new_id);
+	WARNING("backup path: %s", jcr.bv->path);
+	WARNING("new backup path: %s", jcr.new_bv->path);
+	WARNING("update to: %s", jcr.path);
+	WARNING("upgrade_level %d", destor.upgrade_level);
+	WARNING("upgrade_phase %d", destor.upgrade_phase);
+	WARNING("upgrade_relation_level %d", destor.upgrade_relation_level);
+	WARNING("upgrade_similarity %d", destor.upgrade_similarity);
+	WARNING("upgrade_reorder %d", destor.upgrade_reorder);
+	WARNING("upgrade_do_split_merge %d", destor.upgrade_do_split_merge);
+	WARNING("CDC %d %d %d", destor.CDC_min_size, destor.CDC_exp_size, destor.CDC_max_size);
+	WARNING("cache size %d %d", destor.index_cache_size, destor.external_cache_size);
+	WARNING("Simulation level %d", destor.simulation_level);
+	WARNING("index_key_value_store %d", destor.index_key_value_store);
+	WARNING("upgrade_external_store %d", destor.upgrade_external_store);
+}
+
 void do_update(int revision, char *path) {
 	pthread_setname_np(pthread_self(), "main");
 
@@ -622,13 +635,7 @@ void do_update(int revision, char *path) {
 
 	init_update_jcr(revision, path);
 	pthread_mutex_init(&upgrade_index_lock.mutex, NULL);
-
-	destor_log(DESTOR_NOTICE, "job id: %d", jcr.id);
-	destor_log(DESTOR_NOTICE, "new job id: %d", jcr.new_id);
-	destor_log(DESTOR_NOTICE, "upgrade_level %d", destor.upgrade_level);
-	destor_log(DESTOR_NOTICE, "backup path: %s", jcr.bv->path);
-	destor_log(DESTOR_NOTICE, "new backup path: %s", jcr.new_bv->path);
-	destor_log(DESTOR_NOTICE, "update to: %s", jcr.path);
+	record_args();
 
 	if (destor.upgrade_reorder) {
 		do_reorder_upgrade();
