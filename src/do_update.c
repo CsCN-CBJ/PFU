@@ -509,6 +509,10 @@ static void pre_process_args() {
 		destor.CDC_exp_size *= 900;
 		destor.CDC_min_size *= 900;
 		break;
+	case UPGRADE_1D_CONTAINER:
+		destor.upgrade_reorder = 1;
+		destor.upgrade_relation_level = 2;
+		break;
 	default:
 		assert(0);
 		break;

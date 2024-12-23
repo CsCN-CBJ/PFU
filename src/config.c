@@ -200,6 +200,8 @@ void load_config_from_string(sds config, const char *sep) {
 				destor.upgrade_external_store = INDEX_KEY_VALUE_FILE;
 			} else if (strcasecmp(argv[1], "rocksdb") == 0) {
 				destor.upgrade_external_store = INDEX_KEY_VALUE_ROCKSDB;
+			} else if (strcasecmp(argv[1], "rockfile") == 0) {
+				destor.upgrade_external_store = INDEX_KEY_VALUE_ROCKFILE;
 			} else {
 				err = "Invalid key-value store";
 				goto loaderr;

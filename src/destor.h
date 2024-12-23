@@ -80,6 +80,7 @@ int job;
 #define UPGRADE_SIMILARITY_PLUS_REORDER 8
 #define UPGRADE_1D_REORDER 9
 #define UPGRADE_1D_SIMILARITY 10
+#define UPGRADE_1D_CONTAINER 11
 
 /* Log levels */
 #define DESTOR_DEBUG 0
@@ -147,6 +148,7 @@ int job;
 #define INDEX_KEY_VALUE_ROR 2
 #define INDEX_KEY_VALUE_FILE 3
 #define INDEX_KEY_VALUE_ROCKSDB 4
+#define INDEX_KEY_VALUE_ROCKFILE 5
 /*
  * Feature is used for prefetching segments (similarity) or containers (locality).
  * For example, when we find a duplicate chunk,

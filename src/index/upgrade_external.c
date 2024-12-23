@@ -27,6 +27,7 @@ void upgrade_external_cache_insert_htb(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_file(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_rocksdb(containerid id, GHashTable *htb);
 void upgrade_external_cache_insert_rocksdb_1D(containerid id, GHashTable *htb);
+void upgrade_external_cache_insert_rockfile(containerid id, GHashTable *htb);
 
 int upgrade_external_cache_prefetch_htb(containerid id);
 // int upgrade_external_cache_prefetch_DB(containerid id);
@@ -96,6 +97,31 @@ void init_upgrade_external_cache() {
             upgrade_external_cache_prefetch = upgrade_external_cache_prefetch_rocksdb;
         }
         break;
+    case INDEX_KEY_VALUE_ROCKFILE: {
+        sds path = sdsdup(destor.working_directory);
+        path = sdscat(path, "/upgrade_external_cache");
+        switch (destor.upgrade_phase)
+        {
+        case 0:
+            external_cache_file = fopen(path, "w+");
+            external_cache_fd = fileno(external_cache_file);
+            break;
+        case 1:
+            external_cache_file = fopen(path, "w");
+            break;
+        case 2:
+            external_cache_fd = open(path, O_RDONLY | __O_DIRECT);
+            break;
+        default:
+            assert(0);
+            break;
+        }
+        assert(external_cache_file || external_cache_fd != -1);
+        sdsfree(path);
+        init_RocksDB(DB_UPGRADE);
+        upgrade_external_cache_insert = upgrade_external_cache_insert_rockfile;
+        break;
+    }
     default:
         assert(0);
     }
@@ -123,6 +149,14 @@ void close_upgrade_external_cache() {
         }
         break;
     case INDEX_KEY_VALUE_ROCKSDB:
+        close_RocksDB(DB_UPGRADE);
+        break;
+    case INDEX_KEY_VALUE_ROCKFILE:
+        if (external_cache_file) {
+            fclose(external_cache_file);
+        } else {
+            close(external_cache_fd);
+        }
         close_RocksDB(DB_UPGRADE);
         break;
     default:
@@ -296,5 +330,53 @@ int upgrade_external_cache_prefetch_rocksdb(containerid id) {
     }
     upgrade_fingerprint_cache_insert_buffer(id, kv, valueSize / sizeof(upgrade_index_kv_t));
     free(kv);
+    return 1;
+}
+
+void upgrade_external_cache_insert_rockfile(containerid id, GHashTable *htb) {
+    long offset = ftell(external_cache_file);
+    long count = g_hash_table_size(htb);
+    assert(count <= MAX_CHUNK_PER_CONTAINER);
+    hashtable_to_buffer(htb, wBuffer, count);
+    // fseek(external_cache_file, offset, SEEK_SET);
+    fwrite(wBuffer, sizeof(upgrade_index_kv_t), count, external_cache_file);
+
+    GHashTableIter iter;
+    gpointer k, v;
+    g_hash_table_iter_init(&iter, htb);
+    long value[2] = {offset, count};
+    while (g_hash_table_iter_next(&iter, &k, &v)) {
+        put_RocksDB(DB_UPGRADE, k, sizeof(fingerprint), value, sizeof(value));
+    }
+    g_hash_table_destroy(htb);
+}
+
+int upgrade_external_cache_prefetch_rockfile(containerid id, fingerprint *fp) {
+    long *value = NULL;
+    size_t valueSize;
+    get_RocksDB(DB_UPGRADE, fp, sizeof(fingerprint), &value, &valueSize);
+    if (!value) {
+        DEBUG("upgrade_external_cache_prefetch: The FP has not been written!");
+        return 0;
+    }
+    assert(valueSize == 2 * sizeof(long));
+    size_t addr = value[0];
+    size_t count = value[1];
+    free(value);
+    size_t floor = FLOOR(addr, 4096) * 4096;
+    lseek(external_cache_fd, floor, SEEK_SET);
+    size_t rSize = CEIL(addr + count * sizeof(upgrade_index_kv_t), 4096) * 4096 - floor;
+    size_t read_size = read(external_cache_fd, rBuffer, rSize);
+    if (read_size == 0) {
+        return 0;
+    }
+    if (read_size == -1) {
+        perror("read external cache file");
+        exit(1);
+    }
+    assert(read_size <= rSize && read_size > rSize - 4096);
+
+    upgrade_index_kv_t *kv = (upgrade_index_kv_t *)((char *)rBuffer + addr % 4096);
+    upgrade_fingerprint_cache_insert_buffer(id, kv, count);
     return 1;
 }

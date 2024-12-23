@@ -162,7 +162,14 @@ void _upgrade_dedup_external(struct chunk *c, struct index_overhead *stats) {
     if (CHECK_CHUNK(c, CHUNK_DUPLICATE)) return;
 
     stats->kvstore_lookup_requests++;
-    if (upgrade_external_cache_prefetch(c->id)) {
+    int ret;
+    if (destor.upgrade_level == UPGRADE_1D_CONTAINER) {
+        ret = upgrade_external_cache_prefetch_rockfile(c->id, &c->old_fp);
+    } else {
+        ret = upgrade_external_cache_prefetch(c->id);
+    }
+
+    if (ret) {
         stats->kvstore_hits++;
         stats->read_prefetching_units++;
         upgrade_index_value_t* v = upgrade_fingerprint_cache_lookup(c);

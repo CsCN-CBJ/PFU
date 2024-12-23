@@ -31,6 +31,9 @@ void init_RocksDB(int index) {
     rocksdb_block_based_options_set_no_block_cache(table_options, 0);
     rocksdb_options_set_block_based_table_factory(options, table_options);
     rocksdb_options_set_use_direct_reads(options, 1);
+    rocksdb_options_set_enable_blob_files(options, 1);
+    rocksdb_options_set_min_blob_size(options, 1024);
+    rocksdb_options_set_max_open_files(options, 1024);
 
     rocksdb_options_set_compression(options, rocksdb_no_compression);
     rocksdb_options_set_write_buffer_size(options, 64 * 1024);
@@ -77,6 +80,9 @@ void get_RocksDB(int index, char *key, size_t keySize, char **value, size_t *val
     pthread_mutex_lock(&dbLock[index]);
     char *err = NULL;
     *value = rocksdb_get(dbList[index], readoptions, key, keySize, valueSize, &err);
-    assert(!err);
+    if (err) {
+        fprintf(stderr, "rocksdb_get error: %s\n", err);
+        assert(0);
+    }
     pthread_mutex_unlock(&dbLock[index]);
 }
