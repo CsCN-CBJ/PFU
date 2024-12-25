@@ -339,7 +339,7 @@ static void CDC_recipe(DynamicArray *array, GHashTable *featureTable[FEATURE_NUM
 
 		feature_table_insert(featureTable, subFeatures, array->size);
 		dynamic_array_add(array, sub);
-		WARNING("Sub recipe %d, chunk num %d unique %d %s", sub->sub_id, sub->chunk_num, g_hash_table_size(cdcTable), u->recipe->filename);
+		NOTICE("Sub recipe %d, chunk num %d unique %d %s", sub->sub_id, sub->chunk_num, g_hash_table_size(cdcTable), u->recipe->filename);
 		jcr.logic_recipe_unique_container += g_hash_table_size(cdcTable);
 	}
 	int total = 0;
@@ -373,7 +373,7 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 		jcr.physical_recipe_unique_container += unique_num;
 		// 基础版不进行切分合并
 		if (!destor.upgrade_do_split_merge) {
-			WARNING("file %s num: %d Unique num %d", u->recipe->filename, u->chunk_num, unique_num);
+			NOTICE("file %s num: %d Unique num %d", u->recipe->filename, u->chunk_num, unique_num);
 			feature_table_insert(featureTable, features, array->size);
 			dynamic_array_add(array, u);
 			free(u->chunks);
@@ -401,10 +401,10 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 			assert(merge_unique_num <= destor.CDC_max_size);
 			// 如果合并后的文件仍然小于最小容量, 则继续等待合并
 			if (merge_unique_num < destor.CDC_min_size) {
-				WARNING("Merge file %s unique_num: %d, merge_unique_num: %d", cacheListHead->recipe->filename, unique_num, merge_unique_num);
+				NOTICE("Merge file %s unique_num: %d, merge_unique_num: %d", cacheListHead->recipe->filename, unique_num, merge_unique_num);
 				continue;
 			}
-			WARNING("Merge end %s unique_num: %d, merge_unique_num: %d", cacheListHead->recipe->filename, unique_num, merge_unique_num);
+			NOTICE("Merge end %s unique_num: %d, merge_unique_num: %d", cacheListHead->recipe->filename, unique_num, merge_unique_num);
 
 			// add to recipeList
 			feature_table_insert(featureTable, cacheFeatures, array->size);
@@ -419,13 +419,13 @@ static int process_recipe(recipeUnit_t ***recipeList, GHashTable *featureTable[F
 			}
 			jcr.logic_recipe_unique_container += merge_unique_num;
 		} else if (unique_num > destor.CDC_max_size) {
-			WARNING("file %s Unique num %d exceed max size %d", u->recipe->filename, unique_num, destor.CDC_max_size);
+			NOTICE("file %s Unique num %d exceed max size %d", u->recipe->filename, unique_num, destor.CDC_max_size);
 			CDC_recipe(array, featureTable, u);
 			free_file_recipe_meta(u->recipe);
 			free(u->chunks);
 			free(u);
 		} else {
-			WARNING("file %s Unique num %d", u->recipe->filename, unique_num);
+			NOTICE("file %s Unique num %d", u->recipe->filename, unique_num);
 			feature_table_insert(featureTable, features, array->size);
 			dynamic_array_add(array, u);
 			jcr.logic_recipe_unique_container += unique_num;
@@ -634,7 +634,7 @@ void* read_similarity_recipe_thread(void *arg) {
 			}
 		}
 		g_hash_table_destroy(recipeRef);
-		WARNING("recipe similarity %ld", bestRecipeRef);
+		NOTICE("recipe similarity %ld", bestRecipeRef);
 		// 如果没有找到任何相似的recipe, 选择第一个未发送的recipe
 		if (bestRecipeID == -1) {
 			for (containerid id = 0; id < recipe_num; id++) {
