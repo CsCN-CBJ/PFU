@@ -163,7 +163,7 @@ void _upgrade_dedup_external(struct chunk *c, struct index_overhead *stats) {
 
     stats->kvstore_lookup_requests++;
     int ret;
-    if (destor.upgrade_level == UPGRADE_1D_CONTAINER) {
+    if (destor.upgrade_level == UPGRADE_1D_CONTAINER || destor.upgrade_level == UPGRADE_1D_CONTAINER_SIMILARITY) {
         ret = upgrade_external_cache_prefetch_rockfile(c->id, &c->old_fp);
     } else {
         ret = upgrade_external_cache_prefetch(c->id);

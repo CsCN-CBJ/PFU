@@ -469,6 +469,7 @@ static void pre_process_args() {
 	assert(destor.CDC_min_size > 0);
 
 	destor.upgrade_relation_level = 2;
+	destor.upgrade_cdc_level = UPGRADE_CDC_CONTAINER;
 	switch (destor.upgrade_level) {
 	case UPGRADE_NAIVE:
 	case UPGRADE_1D_RELATION:
@@ -497,6 +498,7 @@ static void pre_process_args() {
 		destor.upgrade_do_split_merge = 1;
 		break;
 	case UPGRADE_1D_REORDER:
+		assert(destor.upgrade_external_store == INDEX_KEY_VALUE_ROCKSDB);
 		destor.upgrade_reorder = 1;
 		destor.upgrade_relation_level = 1;
 		break;
@@ -505,6 +507,8 @@ static void pre_process_args() {
 		destor.upgrade_similarity = 1;
 		destor.upgrade_relation_level = 1;
 		destor.upgrade_do_split_merge = 1;
+		destor.upgrade_cdc_level = UPGRADE_CDC_CHUNK;
+		destor.index_cache_size *= 900;
 		destor.CDC_max_size *= 900;
 		destor.CDC_exp_size *= 900;
 		destor.CDC_min_size *= 900;
@@ -512,6 +516,16 @@ static void pre_process_args() {
 	case UPGRADE_1D_CONTAINER:
 		destor.upgrade_reorder = 1;
 		destor.upgrade_relation_level = 2;
+		break;
+	case UPGRADE_1D_CONTAINER_SIMILARITY:
+		destor.upgrade_reorder = 1;
+		destor.upgrade_similarity = 1;
+		destor.upgrade_do_split_merge = 1;
+		destor.upgrade_cdc_level = UPGRADE_CDC_CHUNK;
+		destor.upgrade_relation_level = 2;
+		destor.CDC_max_size *= 100;
+		destor.CDC_exp_size *= 100;
+		destor.CDC_min_size *= 100;
 		break;
 	default:
 		assert(0);
@@ -618,6 +632,7 @@ void record_args() {
 	WARNING("upgrade_level %d", destor.upgrade_level);
 	WARNING("upgrade_phase %d", destor.upgrade_phase);
 	WARNING("upgrade_relation_level %d", destor.upgrade_relation_level);
+	WARNING("upgrade_cdc_level %d", destor.upgrade_cdc_level);
 	WARNING("upgrade_similarity %d", destor.upgrade_similarity);
 	WARNING("upgrade_reorder %d", destor.upgrade_reorder);
 	WARNING("upgrade_do_split_merge %d", destor.upgrade_do_split_merge);

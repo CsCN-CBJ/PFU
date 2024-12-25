@@ -14,5 +14,6 @@ void init_upgrade_external_cache();
 void close_upgrade_external_cache();
 extern void (*upgrade_external_cache_insert)(containerid id, GHashTable *htb);
 extern int (*upgrade_external_cache_prefetch)(containerid id);
+int upgrade_external_cache_prefetch_rockfile(containerid id, fingerprint *fp);
 
 #endif /* UPGRADE_EXTERNAL_H */

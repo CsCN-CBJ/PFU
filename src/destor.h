@@ -81,6 +81,10 @@ int job;
 #define UPGRADE_1D_REORDER 9
 #define UPGRADE_1D_SIMILARITY 10
 #define UPGRADE_1D_CONTAINER 11
+#define UPGRADE_1D_CONTAINER_SIMILARITY 12
+
+#define UPGRADE_CDC_CHUNK 0
+#define UPGRADE_CDC_CONTAINER 1
 
 /* Log levels */
 #define DESTOR_DEBUG 0
@@ -257,6 +261,7 @@ struct destor {
 	int upgrade_phase; // 0: container + recipe, 1: container, 2: recipe
 	int upgrade_similarity;
 	int upgrade_relation_level;
+	int upgrade_cdc_level;
 
 	int chunk_algorithm;
 	int chunk_max_size;
