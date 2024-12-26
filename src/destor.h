@@ -262,6 +262,7 @@ struct destor {
 	int upgrade_similarity;
 	int upgrade_relation_level;
 	int upgrade_cdc_level;
+	int direct_reads;
 
 	int chunk_algorithm;
 	int chunk_max_size;

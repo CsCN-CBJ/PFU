@@ -641,6 +641,7 @@ void record_args() {
 	WARNING("Simulation level %d", destor.simulation_level);
 	WARNING("index_key_value_store %d", destor.index_key_value_store);
 	WARNING("upgrade_external_store %d", destor.upgrade_external_store);
+	WARNING("direct_reads %d", destor.direct_reads);
 }
 
 void do_update(int revision, char *path) {

@@ -75,7 +75,7 @@ void destor_log(int level, const char *fmt, ...) {
 	fprintf(log_fp, "%s\n", msg);
 	fflush(log_fp);
 	fprintf(stdout, "%s\n", msg);
-	fflush(stdout);
+	// fflush(stdout);
 }
 
 void check_simulation_level(int last_level, int current_level) {
