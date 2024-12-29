@@ -28,7 +28,7 @@ void init_RocksDB(int index) {
     // set block
     rocksdb_block_based_table_options_t *table_options = rocksdb_block_based_options_create();
     // rocksdb_block_based_options_set_block_size(table_options, 64 * 1024);
-    rocksdb_block_based_options_set_no_block_cache(table_options, 0);
+    rocksdb_block_based_options_set_no_block_cache(table_options, 1);
     rocksdb_options_set_block_based_table_factory(options, table_options);
     if (destor.direct_reads) {
         rocksdb_options_set_use_direct_reads(options, 1);

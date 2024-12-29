@@ -426,7 +426,6 @@ static void* sha256_container(void* arg) {
 			c = con->chunks + i;
 			jcr.hash_num++;
 			if (destor.simulation_level >= SIMULATION_RESTORE) {
-				assert(0);
 				memcpy(c->fp, c->old_fp, sizeof(fingerprint));
 			} else {
 				SHA256_CTX ctx;

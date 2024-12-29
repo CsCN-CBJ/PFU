@@ -10,7 +10,7 @@
 
 #include "destor.h"
 
-#define FEATURE_NUM 4
+#define FEATURE_NUM 8
 typedef uint64_t feature;
 struct featureList {
 	feature feature;
