@@ -458,11 +458,6 @@ void wait_jobs_done() {
 static void pre_process_args() {
 
 	// CDC
-	if (destor.CDC_ratio != 0) {
-		destor.CDC_max_size = destor.index_cache_size;
-		destor.CDC_exp_size = (int)(destor.CDC_max_size * destor.CDC_ratio / 100);
-		destor.CDC_min_size = (int)(destor.CDC_exp_size * destor.CDC_ratio / 100);
-	}
 	assert(destor.CDC_max_size >= destor.CDC_exp_size);
 	assert(destor.CDC_exp_size >= destor.CDC_min_size);
 	assert(destor.CDC_min_size > 0);
@@ -507,7 +502,7 @@ static void pre_process_args() {
 		destor.upgrade_relation_level = 1;
 		destor.upgrade_do_split_merge = 1;
 		destor.upgrade_cdc_level = UPGRADE_CDC_CHUNK;
-		destor.index_cache_size *= 900;
+		// destor.index_cache_size *= 900;
 		destor.CDC_max_size *= 900;
 		destor.CDC_exp_size *= 900;
 		destor.CDC_min_size *= 900;

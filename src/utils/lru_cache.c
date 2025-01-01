@@ -14,7 +14,7 @@
 /*
  * The container read cache.
  */
-struct lruCache* new_lru_cache(int size, void (*free_elem)(void *),
+struct lruCache* new_lru_cache(int64_t size, void (*free_elem)(void *),
 		int (*hit_elem)(void* elem, void* user_data)) {
 	struct lruCache* c = (struct lruCache*) malloc(sizeof(struct lruCache));
 
@@ -149,7 +149,7 @@ int lru_cache_is_full(struct lruCache* c) {
 }
 
 // 不考虑统计变量
-lruHashMap_t *new_lru_hashmap(int size, void (*free_value)(void *),
+lruHashMap_t *new_lru_hashmap(int64_t size, void (*free_value)(void *),
 		GHashFunc hash_func, GEqualFunc equal_func) {
 	lruHashMap_t *c = (lruHashMap_t *) malloc(sizeof(lruHashMap_t));
 	c->lru = new_lru_cache(size, free_value, NULL);
@@ -179,45 +179,39 @@ void* lru_hashmap_lookup(lruHashMap_t *c, void* key) {
 	return ((void **)elem->data)[1];
 }
 
-void lru_hashmap_insert_and_retrive(lruHashMap_t *c, void *key, void *value, void **get_key, void **get_value) {
+void lru_hashmap_insert(lruHashMap_t *c, void *key, void *value, int64_t kvSize) {
 	struct lruCache *lru = c->lru;
 
-	if (lru->max_size > 0 && lru->size == lru->max_size) {
+	while (lru->max_size > 0 && lru->size + kvSize >= lru->max_size) {
 		GList *last = lru->elem_queue_tail;
+		if (!last) {
+			break;
+		}
 		lru->elem_queue_tail = last->prev;
 		lru->elem_queue = g_list_remove_link(lru->elem_queue, last);
 		
 		void **victim = (void **)last->data;
 		g_list_free_1(last);
-		lru->size--;
+		lru->size -= (int64_t)victim[2];
 		
 		assert(g_hash_table_remove(c->map, victim[0]));
-		if (get_key) {
-			*get_key = victim[0];
-		} else {
-			free(victim[0]);
-		}
-		if (get_value) {
-			*get_value = victim[1];
-		} else if (lru->free_elem) {
+		free(victim[0]);
+		if (lru->free_elem) {
 			lru->free_elem(victim[1]);
 		}
 		free(victim);
 	}
 
 	// 这里必须在LRU中同时存key与value是为了在删除时能够同时删除map中的元素
-	void **data = (void **)malloc(sizeof(void *) * 2);
+	void **data = (void **)malloc(sizeof(void *) * 3);
 	data[0] = key;
 	data[1] = value;
+	data[2] = (void *)kvSize;
 	lru->elem_queue = g_list_prepend(lru->elem_queue, data);
 	g_hash_table_insert(c->map, key, g_list_first(lru->elem_queue));
 	if (!lru->elem_queue_tail) {
 		// 说明刚刚加进去的是唯一一个元素
 		lru->elem_queue_tail = lru->elem_queue;
 	}
-	lru->size++;
-}
-
-void lru_hashmap_insert(lruHashMap_t *c, void *key, void *value) {
-	lru_hashmap_insert_and_retrive(c, key, value, NULL, NULL);
+	lru->size += kvSize;
 }

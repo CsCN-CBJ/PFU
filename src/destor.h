@@ -281,8 +281,8 @@ struct destor {
 	int index_specific;
 
 	/* in number of containers, for DDFS/ChunkStash/Sampled Index. */
-	int index_cache_size;
-	int external_cache_size;
+	int64_t index_cache_size;
+	int64_t external_cache_size;
 	int fake_containers; // enable fake containers to speed up the testings and reduce the memory usage
 	int CDC_max_size;
 	int CDC_min_size;

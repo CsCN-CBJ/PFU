@@ -22,6 +22,8 @@ typedef struct {
     upgrade_index_value_t value;
 } upgrade_index_kv_t;
 
+#define UPGRADE_KV_SIZE (20 + sizeof(fingerprint) + sizeof(containerid))
+
 struct containerMap {
     containerid old_id;
     containerid new_id;

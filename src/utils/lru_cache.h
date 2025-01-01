@@ -10,13 +10,14 @@
 #define INFI_CACHE -1
 
 #include <glib.h>
+#include <stdlib.h>
 
 struct lruCache {
 	GList *elem_queue;
 	GList *elem_queue_tail;
 
-	int max_size; // less then zero means infinite cache
-	int size;
+	int64_t max_size; // less then zero means infinite cache
+	int64_t size;
 
 	double hit_count;
 	double miss_count;
@@ -30,7 +31,7 @@ typedef struct lruHashMap {
 	struct lruCache *lru;
 } lruHashMap_t;
 
-struct lruCache* new_lru_cache(int size, void (*free_elem)(void *),
+struct lruCache* new_lru_cache(int64_t size, void (*free_elem)(void *),
 		int (*hit_elem)(void* elem, void* user_data));
 void free_lru_cache(struct lruCache*);
 void* lru_cache_lookup(struct lruCache*, void* user_data);
@@ -44,11 +45,10 @@ void lru_cache_insert(struct lruCache *c, void* data,
 		void (*victim)(void*, void*), void* user_data);
 int lru_cache_is_full(struct lruCache*);
 
-lruHashMap_t *new_lru_hashmap(int size, void (*free_value)(void *),
+lruHashMap_t *new_lru_hashmap(int64_t size, void (*free_value)(void *),
 		GHashFunc hash_func, GEqualFunc equal_func);
 void free_lru_hashmap(lruHashMap_t *c);
 void* lru_hashmap_lookup(lruHashMap_t *c, void* key);
-void lru_hashmap_insert(lruHashMap_t *c, void* key, void* value);
-void lru_hashmap_insert_and_retrive(lruHashMap_t *c, void *key, void *value, void **get_key, void **get_value);
+void lru_hashmap_insert(lruHashMap_t *c, void* key, void* value, int64_t kvSize);
 
 #endif /* Cache_H_ */

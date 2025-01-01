@@ -254,7 +254,7 @@ int upgrade_external_cache_prefetch_htb(containerid id) {
         free(victim);
         assert((key && value) || (!key && !value));
         if (key) {
-            lru_hashmap_insert(external_cache_htb, key, value);
+            // lru_hashmap_insert(external_cache_htb, key, value);
         }
         return 1;
     }
@@ -266,9 +266,10 @@ int upgrade_external_cache_prefetch_htb(containerid id) {
  */
 
 void upgrade_external_cache_insert_htb(containerid id, GHashTable *htb) {
+    assert(0);
     void *key = malloc(sizeof(containerid));
     *(containerid *)key = id;
-    lru_hashmap_insert(external_cache_htb, key, htb);
+    // lru_hashmap_insert(external_cache_htb, key, htb);
 }
 
 void upgrade_external_cache_insert_DB(containerid id, GHashTable *htb) {

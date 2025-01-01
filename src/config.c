@@ -162,10 +162,10 @@ void load_config_from_string(sds config, const char *sep) {
 			}
 		} else if (strcasecmp(argv[0], "fingerprint-index-cache-size")
 				== 0 && argc == 2) {
-			destor.index_cache_size = atoi(argv[1]);
+			destor.index_cache_size = atol(argv[1]);
 		} else if (strcasecmp(argv[0], "fingerprint-external-cache-size")
 				== 0 && argc == 2) {
-			destor.external_cache_size = atoi(argv[1]);
+			destor.external_cache_size = atol(argv[1]);
 		} else if (strcasecmp(argv[0], "recipe-cdc-ratio")
 				== 0 && argc == 2) {
 			destor.CDC_ratio = atoi(argv[1]);
