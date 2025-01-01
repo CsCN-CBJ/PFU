@@ -72,6 +72,7 @@ void init_container_store() {
 			exit(1);
 		}
 	}
+	assert(!posix_fadvise(fileno(old_fp), 0, 0, POSIX_FADV_SEQUENTIAL));
 
 	if (job == DESTOR_UPDATE) {
 		containerfile = sdscat(containerfile, "_new");
@@ -260,7 +261,7 @@ void write_container(struct container* c) {
 
 		pthread_mutex_unlock(mutex);
 	}
-
+	assert(!posix_fadvise(fileno(fp), 0, 0, POSIX_FADV_DONTNEED));
 }
 
 void unser_container(struct container *c, unsigned char *cur, containerid id) {
@@ -343,6 +344,9 @@ struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 		pthread_mutex_unlock(mutex);
 
 		cur = &c->data[CONTAINER_SIZE - CONTAINER_META_SIZE];
+	}
+	if (job == DESTOR_UPDATE) {
+		assert(!posix_fadvise(fileno(fp), 0, ftell(fp), POSIX_FADV_DONTNEED));
 	}
 	unser_container(c, cur, id);
 	return c;
