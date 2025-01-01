@@ -263,6 +263,51 @@ void write_container(struct container* c) {
 
 }
 
+void unser_container(struct container *c, unsigned char *cur, containerid id) {
+	unser_declare;
+	unser_begin(cur, CONTAINER_META_SIZE);
+
+	unser_int64(c->meta.id);
+	unser_int32(c->meta.chunk_num);
+	unser_int32(c->meta.data_size);
+
+	if(c->meta.id != id){
+		WARNING("expect %lld, but read %lld", id, c->meta.id);
+		fprintf(stderr, "expect %lld, but read %lld", id, c->meta.id);
+		assert(c->meta.id == id);
+	}
+
+	c->chunks = (struct chunk *)calloc(c->meta.chunk_num, sizeof(struct chunk));
+	int i;
+	for (i = 0; i < c->meta.chunk_num; i++) {
+		struct metaEntry* me = (struct metaEntry*) malloc(
+				sizeof(struct metaEntry));
+		memset(&me->fp, 0, sizeof(fingerprint));
+		unser_bytes(&me->fp, c->fp_size);
+		unser_bytes(&me->len, sizeof(int32_t));
+		unser_bytes(&me->off, sizeof(int32_t));
+		g_hash_table_insert(c->meta.map, &me->fp, me);
+
+		struct chunk *ck = c->chunks + i;
+		ck->id = c->meta.id;
+		ck->size = me->len;
+		memcpy(&ck->old_fp, &me->fp, sizeof(fingerprint));
+		if (destor.simulation_level < SIMULATION_RESTORE) {
+			ck->data = malloc(me->len);
+			memcpy(ck->data, c->data + me->off, me->len);
+		} else {
+			ck->data = NULL;
+		}
+	}
+
+	unser_end(cur, CONTAINER_META_SIZE);
+
+	if (destor.simulation_level >= SIMULATION_RESTORE) {
+		free(c->data);
+		c->data = 0;
+	}
+}
+
 struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 	pthread_mutex_t *mutex = fp == new_fp ? &new_mutex : &old_mutex;
 	struct container *c = (struct container*) calloc(1, sizeof(struct container));
@@ -299,46 +344,7 @@ struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 
 		cur = &c->data[CONTAINER_SIZE - CONTAINER_META_SIZE];
 	}
-
-	unser_declare;
-	unser_begin(cur, CONTAINER_META_SIZE);
-
-	unser_int64(c->meta.id);
-	unser_int32(c->meta.chunk_num);
-	unser_int32(c->meta.data_size);
-
-	if(c->meta.id != id){
-		WARNING("expect %lld, but read %lld", id, c->meta.id);
-		fprintf(stderr, "expect %lld, but read %lld", id, c->meta.id);
-		assert(c->meta.id == id);
-	}
-
-	c->chunks = (struct chunk *)calloc(c->meta.chunk_num, sizeof(struct chunk));
-	int i;
-	for (i = 0; i < c->meta.chunk_num; i++) {
-		struct metaEntry* me = (struct metaEntry*) malloc(
-				sizeof(struct metaEntry));
-		memset(&me->fp, 0, sizeof(fingerprint));
-		unser_bytes(&me->fp, c->fp_size);
-		unser_bytes(&me->len, sizeof(int32_t));
-		unser_bytes(&me->off, sizeof(int32_t));
-		g_hash_table_insert(c->meta.map, &me->fp, me);
-
-		struct chunk *ck = c->chunks + i;
-		ck->id = c->meta.id;
-		ck->size = me->len;
-		memcpy(&ck->old_fp, &me->fp, sizeof(fingerprint));
-		ck->data = malloc(me->len);
-		memcpy(ck->data, c->data + me->off, me->len);
-	}
-
-	unser_end(cur, CONTAINER_META_SIZE);
-
-	if (destor.simulation_level >= SIMULATION_RESTORE) {
-		free(c->data);
-		c->data = 0;
-	}
-
+	unser_container(c, cur, id);
 	return c;
 }
 
