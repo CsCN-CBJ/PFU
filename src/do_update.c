@@ -10,7 +10,7 @@
 #include "index/upgrade_cache.h"
 #include "similarity.h"
 
-#define QUEUE_SIZE 10
+#define QUEUE_SIZE 5
 /* defined in index.c */
 extern struct index_overhead index_overhead, upgrade_index_overhead;
 extern GHashTable *upgrade_processing;
@@ -233,7 +233,7 @@ static void* lru_get_chunk_thread_2D(void *arg) {
 	return NULL;
 }
 
-#define CONTAINER_BUFFER_SIZE 100
+#define CONTAINER_BUFFER_SIZE 2
 void* read_container_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "read_container");
 

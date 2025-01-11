@@ -149,10 +149,10 @@ int lru_cache_is_full(struct lruCache* c) {
 }
 
 // 不考虑统计变量
-lruHashMap_t *new_lru_hashmap(int64_t size, void (*free_value)(void *),
+lruHashMap_t *new_lru_hashmap(int64_t phySize, void (*free_value)(void *),
 		GHashFunc hash_func, GEqualFunc equal_func) {
 	lruHashMap_t *c = (lruHashMap_t *) malloc(sizeof(lruHashMap_t));
-	c->lru = new_lru_cache(size, free_value, NULL);
+	c->lru = new_lru_cache(phySize, free_value, NULL);
 	c->map = g_hash_table_new_full(hash_func, equal_func, NULL, NULL);
 	return c;
 }

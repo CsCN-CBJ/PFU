@@ -45,7 +45,7 @@ void lru_cache_insert(struct lruCache *c, void* data,
 		void (*victim)(void*, void*), void* user_data);
 int lru_cache_is_full(struct lruCache*);
 
-lruHashMap_t *new_lru_hashmap(int64_t size, void (*free_value)(void *),
+lruHashMap_t *new_lru_hashmap(int64_t phySize, void (*free_value)(void *),
 		GHashFunc hash_func, GEqualFunc equal_func);
 void free_lru_hashmap(lruHashMap_t *c);
 void* lru_hashmap_lookup(lruHashMap_t *c, void* key);
