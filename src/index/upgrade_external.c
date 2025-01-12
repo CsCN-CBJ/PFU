@@ -15,7 +15,7 @@ void (*upgrade_external_cache_insert)(containerid id, GHashTable *htb);
 int (*upgrade_external_cache_prefetch)(containerid id);
 
 // 第一个留作指示size
-#define MAX_CHUNK_PER_CONTAINER 1200
+#define MAX_CHUNK_PER_CONTAINER 10000
 #define RELATION_CONTAINER_SIZE (MAX_CHUNK_PER_CONTAINER * sizeof(upgrade_index_kv_t))
 static lruHashMap_t *external_cache_htb;
 FILE *external_cache_file = NULL;

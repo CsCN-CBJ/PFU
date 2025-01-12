@@ -195,7 +195,7 @@ void write_container(struct container* c) {
 
 	if (destor.simulation_level < SIMULATION_APPEND) {
 
-		unsigned char * cur = &c->data[CONTAINER_SIZE - CONTAINER_META_SIZE];
+		unsigned char * cur = c->data;
 		ser_declare;
 		ser_begin(cur, CONTAINER_META_SIZE);
 		ser_int64(c->meta.id);
@@ -212,7 +212,7 @@ void write_container(struct container* c) {
 			ser_bytes(&me->off, sizeof(int32_t));
 		}
 
-		ser_end(cur, CONTAINER_META_SIZE);
+		ser_end(cur, CONTAINER_SIZE - c->meta.data_size);
 
 		pthread_mutex_lock(mutex);
 
@@ -266,7 +266,7 @@ void write_container(struct container* c) {
 
 void unser_container(struct container *c, unsigned char *cur, containerid id) {
 	unser_declare;
-	unser_begin(cur, CONTAINER_META_SIZE);
+	unser_begin(cur, 0);
 
 	unser_int64(c->meta.id);
 	unser_int32(c->meta.chunk_num);
@@ -301,7 +301,7 @@ void unser_container(struct container *c, unsigned char *cur, containerid id) {
 		}
 	}
 
-	unser_end(cur, CONTAINER_META_SIZE);
+	unser_end(cur, CONTAINER_SIZE - c->meta.data_size);
 
 	if (destor.simulation_level >= SIMULATION_RESTORE) {
 		free(c->data);
@@ -325,7 +325,7 @@ struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 		if (destor.simulation_level >= SIMULATION_APPEND)
 			fseek(fp, id * CONTAINER_META_SIZE + 8, SEEK_SET);
 		else
-			fseek(fp, (id + 1) * CONTAINER_SIZE - CONTAINER_META_SIZE + 8,
+			fseek(fp, (id + 1) * CONTAINER_SIZE + 8,
 			SEEK_SET);
 
 		fread(c->data, CONTAINER_META_SIZE, 1, fp);
@@ -343,7 +343,7 @@ struct container* _retrieve_container_by_id(containerid id, FILE *fp) {
 
 		pthread_mutex_unlock(mutex);
 
-		cur = &c->data[CONTAINER_SIZE - CONTAINER_META_SIZE];
+		cur = c->data;
 	}
 	if (job == DESTOR_UPDATE) {
 		assert(!posix_fadvise(fileno(fp), 0, ftell(fp), POSIX_FADV_DONTNEED));
@@ -404,7 +404,7 @@ struct containerMeta* retrieve_container_meta_by_id(containerid id) {
 	if (destor.simulation_level >= SIMULATION_APPEND)
 		fseek(fp, id * CONTAINER_META_SIZE + 8, SEEK_SET);
 	else
-		fseek(fp, (id + 1) * CONTAINER_SIZE - CONTAINER_META_SIZE + 8,
+		fseek(fp, (id + 1) * CONTAINER_SIZE + 8,
 		SEEK_SET);
 
 	fread(buf, CONTAINER_META_SIZE, 1, fp);
@@ -462,15 +462,18 @@ struct chunk* get_chunk_in_container(struct container* c, fingerprint *fp) {
 
 int container_overflow(struct container* c, int32_t size) {
 	assert(c->fp_size == 20 || c->fp_size == 32);
-	if (c->meta.data_size + size > CONTAINER_SIZE - CONTAINER_META_SIZE)
-		return 1;
+	int32_t metaUnitSize = sizeof(struct metaEntry) - sizeof(fingerprint) + c->fp_size;
+	return c->meta.data_size + size + (c->meta.chunk_num + 1) * metaUnitSize + 16 > CONTAINER_SIZE;
+
+	// if (c->meta.data_size + size > CONTAINER_SIZE - CONTAINER_META_SIZE)
+	// 	return 1;
 	/*
 	 * 28 is the size of metaEntry.
 	 * 16 is in struct metaEntry, see write_container
 	 */
-	if ((c->meta.chunk_num + 1) * (sizeof(struct metaEntry) - sizeof(fingerprint) + c->fp_size) + 16 > CONTAINER_META_SIZE)
-		return 1;
-	return 0;
+	// if ((c->meta.chunk_num + 1) * (sizeof(struct metaEntry) - sizeof(fingerprint) + c->fp_size) + 16 > CONTAINER_META_SIZE)
+	// 	return 1;
+	// return 0;
 }
 
 /*
@@ -489,13 +492,14 @@ int add_chunk_to_container(struct container* c, struct chunk* ck) {
 	struct metaEntry* me = (struct metaEntry*) malloc(sizeof(struct metaEntry));
 	memcpy(&me->fp, &ck->fp, sizeof(fingerprint));
 	me->len = ck->size;
-	me->off = c->meta.data_size;
+	// me->off = c->meta.data_size;
+	me->off = CONTAINER_SIZE - c->meta.data_size - ck->size; // reverse order
 
 	g_hash_table_insert(c->meta.map, &me->fp, me);
 	c->meta.chunk_num++;
 
 	if (destor.simulation_level < SIMULATION_APPEND)
-		memcpy(c->data + c->meta.data_size, ck->data, ck->size);
+		memcpy(c->data + me->off, ck->data, ck->size);
 
 	c->meta.data_size += ck->size;
 
