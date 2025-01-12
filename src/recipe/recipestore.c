@@ -284,6 +284,8 @@ void free_backup_version(struct backupVersion *b) {
 		fclose(b->recipe_fp);
 	if (b->record_fp)
 		fclose(b->record_fp);
+	if (b->btree_fp)
+		fclose(b->btree_fp);
 
 	b->metadata_fp = b->recipe_fp = b->record_fp = 0;
 	sdsfree(b->path);
@@ -473,6 +475,28 @@ struct fileRecipeMeta* read_next_file_recipe_meta(struct backupVersion* b) {
 
 	read_file_num++;
 
+	return r;
+}
+
+struct fileRecipeMeta* read_next_btree_file_recipe_meta(struct backupVersion* b) {
+	if (!b->btree_fp) {
+		sds fname = sdsdup(b->fname_prefix);
+		fname = sdscat(fname, ".btree");
+		if ((b->btree_fp = fopen(fname, "r")) == 0) {
+			fprintf(stderr, "Can not open bv%d.btree!\n", b->bv_num);
+			exit(1);
+		}
+	}
+
+	static int read_file_num;
+	assert(read_file_num <= b->number_of_files);
+
+	char filename[256];
+	snprintf(filename, 256, "file%d", read_file_num);
+	struct fileRecipeMeta* r = new_file_recipe_meta(filename);
+	fread(&r->chunknum, sizeof(r->chunknum), 1, b->btree_fp);
+	fread(&r->offset, sizeof(r->offset), 1, b->btree_fp);
+	read_file_num++;
 	return r;
 }
 

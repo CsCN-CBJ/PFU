@@ -37,6 +37,7 @@ struct backupVersion {
 	FILE *metadata_fp;
 	FILE *recipe_fp;
 	FILE *record_fp;
+	FILE *btree_fp;  /* unused */
 
 	/* the write buffer of recipe meta */
 	char *metabuf;
@@ -55,6 +56,7 @@ struct backupVersion {
 struct fileRecipeMeta {
 	int64_t chunknum;
 	int64_t filesize;
+	int64_t offset;
 	sds filename;
 };
 
@@ -96,6 +98,7 @@ void append_n_chunk_pointers(struct backupVersion* b,
 		struct chunkPointer* cp, int n);
 void write_n_chunks(struct backupVersion* b, struct chunk* cks, int n, int64_t off);
 struct fileRecipeMeta* read_next_file_recipe_meta(struct backupVersion* b);
+struct fileRecipeMeta* read_next_btree_file_recipe_meta(struct backupVersion* b);
 struct chunkPointer* read_next_n_chunk_pointers(struct backupVersion* b, int n,
 		int *k);
 struct chunkPointer* read_n_chunk_pointers(struct backupVersion* b, off_t off, int n);

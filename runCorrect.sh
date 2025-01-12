@@ -24,6 +24,7 @@ set -x
 mkdir -p ${DST_DIR}${RESTORE_ID}
 ./destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
 ./destor -r0 -p"simulation-level no" ${DST_DIR}${RESTORE_ID}
+# python3 trans_recipe.py ${WORKING_DIR}/recipes/bv0.meta ${WORKING_DIR}/recipes/bv0.btree
 let ++RESTORE_ID
 
 # update test

@@ -236,6 +236,9 @@ static recipeUnit_t *read_one_file(feature features[FEATURE_NUM]) {
 	struct fileRecipeMeta *r = read_next_file_recipe_meta(jcr.bv);
 	struct chunkPointer* cp = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &chunknum);
 	assert(r->chunknum == chunknum);
+	// struct fileRecipeMeta *r = read_next_btree_file_recipe_meta(jcr.bv);
+	// unit->chunk_off = r->offset * (sizeof(fingerprint) + sizeof(containerid) + sizeof(int32_t));
+	// struct chunkPointer* cp = read_n_chunk_pointers(jcr.bv, unit->chunk_off, r->chunknum);
 
 	unit->recipe = r;
 	unit->chunks = cp;

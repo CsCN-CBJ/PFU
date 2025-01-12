@@ -22,6 +22,7 @@ if [[ $bkp == 1 ]]; then
     # basic test
     mkdir -p ${DST_DIR}${RESTORE_ID}
     ./destor ${SRC_DIR} "${CONFIG}" > ${LOG_DIR}/0.log
+    # python3 trans_recipe.py ${WORKING_DIR}/recipes/bv0.meta ${WORKING_DIR}/recipes/bv0.btree
 
     if [ $chk -eq 1 ]; then
         ./destor -r0 ${DST_DIR}${RESTORE_ID} "${CONFIG}"
