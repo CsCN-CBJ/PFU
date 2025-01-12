@@ -19,11 +19,13 @@ void init_recipe_store() {
 	count_fname = sdscat(count_fname, "backupversion.count");
 
 	FILE *fp;
-	if ((fp = fopen(count_fname, "r"))) {
+	// disable read backupversion.count
+	if (0 && (fp = fopen(count_fname, "r"))) {
 		/* Read if exists. */
 		fread(&backup_version_count, 4, 1, fp);
 		fclose(fp);
 	}
+	backup_version_count = job == DESTOR_BACKUP || job == DESTOR_RESTORE ? 0 : 1;
 
 	sdsfree(count_fname);
 
