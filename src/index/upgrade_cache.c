@@ -351,6 +351,7 @@ void upgrade_1D_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_valu
 }
 
 void count_cache_hit(struct chunkPointer* cps, int64_t chunk_num) {
+    return;
     GHashTable *unique_ids = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
     for (int i = 0; i < chunk_num; i++) {
         if (g_hash_table_lookup(unique_ids, &cps[i].id)) continue;

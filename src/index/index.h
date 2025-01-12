@@ -24,6 +24,7 @@ void close_index();
  * lookup fingerprints in a segment in index.
  */
 int index_lookup(struct segment*);
+void index_lookup_chunk(struct chunk *c);
 /*
  * Insert/update fingerprints.
  */
