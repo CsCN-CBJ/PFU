@@ -922,6 +922,8 @@ void* filter_thread_recipe(void* arg) {
 	struct backupVersion* bv = jcr.new_bv;
     DynamicArray *file_chunks = NULL;
     recipeUnit_t *ru = NULL;
+    // FILE *fp = fopen("recipe.log", "w");
+    // int32_t chunk_num = 0;
     while ((ru = sync_queue_pop(hash_queue)) != NULL) {
         TIMER_DECLARE(1);
         TIMER_BEGIN(1);
@@ -933,6 +935,9 @@ void* filter_thread_recipe(void* arg) {
         free(ru->cks);
         free(ru);
         TIMER_END(1, jcr.filter_time);
+        // fseek(fp, 0, SEEK_SET);
+        // fprintf(fp, "%ld,", bv->number_of_chunks);
+        // fflush(fp);
         #if 0
         // file start
         file_chunks = (DynamicArray *)malloc(sizeof(DynamicArray));

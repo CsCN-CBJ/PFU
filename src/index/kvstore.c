@@ -62,24 +62,11 @@ void init_kvstore() {
 
     switch(destor.index_key_value_store){
     	case INDEX_KEY_VALUE_HTABLE:
-    		// init_kvstore_mysql();
-			// if (destor.upgrade_level == UPGRADE_1D_RELATION) {
-			// 	init_upgrade_kvstore_htable(destor.index_key_size, sizeof(upgrade_index_value_t));
-			// } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
-			// 	init_upgrade_kvstore_htable(sizeof(int64_t), sizeof(int64_t));
-			// }
 			init_kvstore_htable();
-
     		close_kvstore = close_kvstore_htable;
     		kvstore_lookup = kvstore_htable_lookup;
     		kvstore_update = kvstore_htable_update;
-			// kvstore_multi_update = kvstore_mysql_multi_update;
     		kvstore_delete = kvstore_htable_delete;
-
-			// close_upgrade_kvstore = close_upgrade_kvstore_htable;
-			// upgrade_kvstore_lookup = upgrade_kvstore_htable_lookup;
-			// upgrade_kvstore_update = upgrade_kvstore_htable_update;
-
     		break;
 		// case INDEX_KEY_VALUE_MYSQL:
 		// 	init_kvstore_mysql();
