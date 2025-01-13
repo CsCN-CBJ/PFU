@@ -13,11 +13,9 @@ testInit $2
 CONFIG=-p"working-directory $WORKING_DIR"
 SRC_DIR=$1
 
+set -ex
 cd ~/destor
 remake
-
-set -ex
-
 resetAll
 
 # basic test
