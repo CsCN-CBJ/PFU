@@ -199,17 +199,6 @@ void upgrade_index_lookup_2D(struct chunk *c, struct index_overhead *stats, int 
     }
 }
 
-void upgrade_index_lookup_2D_filter(struct chunk *c) {
-    // 2D index lookup in filter phase, to count separately
-    if (destor.upgrade_level == UPGRADE_2D_RELATION) {
-        upgrade_index_lookup_2D(c, &index_overhead, 0);
-    } else if (destor.upgrade_level == UPGRADE_SIMILARITY || destor.upgrade_level == UPGRADE_2D_CONSTRAINED) {
-        upgrade_index_lookup_2D(c, &index_overhead, 1);
-    } else {
-        assert(0);
-    }
-}
-
 /*
  * return 1: indicates lookup is successful.
  * return 0: indicates the index buffer is full.
@@ -349,18 +338,3 @@ void upgrade_1D_fingerprint_cache_insert(fingerprint *old_fp, upgrade_index_valu
     memcpy(value, v, sizeof(upgrade_index_value_t));
     lru_hashmap_insert(upgrade_cache, fp, value, UPGRADE_KV_SIZE);
 }
-
-void count_cache_hit(struct chunkPointer* cps, int64_t chunk_num) {
-    GHashTable *unique_ids = g_hash_table_new_full(g_int64_hash, g_int64_equal, free, NULL);
-    for (int i = 0; i < chunk_num; i++) {
-        if (g_hash_table_lookup(unique_ids, &cps[i].id)) continue;
-        containerid *p = malloc(sizeof(containerid));
-        *p = cps[i].id;
-        g_hash_table_insert(unique_ids, p, "1");
-        if (upgrade_storage_buffer_id == cps[i].id || g_hash_table_lookup(upgrade_cache->map, &cps[i].id)) {
-            jcr.recipe_hit++;
-        }
-    }
-    g_hash_table_destroy(unique_ids);
-}
-

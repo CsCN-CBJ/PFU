@@ -44,7 +44,6 @@ static void* read_recipe_thread(void *arg) {
 		struct chunkPointer* cps = read_next_n_chunk_pointers(jcr.bv, r->chunknum, &k);
 		TIMER_END(1, jcr.read_recipe_time);
 		assert(k == r->chunknum);
-		count_cache_hit(cps, r->chunknum);
 
 		for (j = 0; j < r->chunknum; j++) {
 			TIMER_BEGIN(1);
@@ -119,120 +118,6 @@ static void* lru_get_chunk_thread(void *arg) {
 	return NULL;
 }
 
-static void* lru_get_chunk_thread_2D(void *arg) {
-	struct chunk *c, *ck; // c: get from queue, ck: temp chunk
-	struct container *con_buffer = NULL; // 防止两个相邻的container读两次
-	while ((c = sync_queue_pop(pre_dedup_queue))) {
-
-		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END) || CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-			sync_queue_push(upgrade_chunk_queue, c);
-			continue;
-		}
-
-		TIMER_DECLARE(1);
-		TIMER_BEGIN(1);
-
-		// 已经发送过的container不再发送
-		assert(c->id >= 0);
-		DEBUG("lru_get_chunk_thread_2D %ld", c->id);
-		pthread_mutex_lock(&upgrade_index_lock.mutex);
-		struct containerMap *cm = g_hash_table_lookup(upgrade_container, &c->id);
-		pthread_mutex_unlock(&upgrade_index_lock.mutex);
-		struct container **conList;
-		int16_t container_num = 0;
-		int is_new;
-		// 将需要读取的container放到conList中
-		if (cm && destor.external_cache_size > 0) {
-			assert(0);
-			assert(cm->old_id == c->id);
-			conList = malloc(sizeof(struct container *) * cm->container_num);
-			DEBUG("Read new container %ld %ld %d", c->id, cm->new_id, cm->container_num);
-			for (int i = 0; i < cm->container_num; i++) {
-				if (con_buffer && con_buffer->meta.id == cm->new_id + i) {
-					conList[i] = con_buffer;
-					con_buffer = NULL;
-					jcr.read_container_new_buffered++;
-				} else {
-					conList[i] = retrieve_new_container_by_id(cm->new_id + i);
-					jcr.read_container_new++;
-				}
-			}
-			container_num = cm->container_num;
-			is_new = TRUE;
-		} else {
-			conList = malloc(sizeof(struct container *));
-			conList[0] = retrieve_container_by_id(c->id);
-			jcr.read_container_num++;
-			assert(conList[0]);
-			container_num = 1;
-			is_new = FALSE;
-		}
-
-		// send container
-		ck = new_chunk(0);
-		SET_CHUNK(ck, CHUNK_CONTAINER_START);
-		if (is_new) {
-			SET_CHUNK(ck, CHUNK_REPROCESS);
-		}
-		TIMER_END(1, jcr.read_chunk_time);
-		sync_queue_push(upgrade_chunk_queue, ck);
-		TIMER_BEGIN(1);
-
-		GHashTableIter iter;
-		gpointer key, value;
-		for (int i = 0; i < container_num; i++) {
-			struct container *con = conList[i];
-			g_hash_table_iter_init(&iter, con->meta.map);
-			while(g_hash_table_iter_next(&iter, &key, &value)){
-				ck = get_chunk_in_container(con, key);
-				assert(ck);
-				if (is_new) {
-					ck->id = con->meta.id;
-					SET_CHUNK(ck, CHUNK_REPROCESS);
-				} else {
-					memcpy(ck->old_fp, ck->fp, sizeof(fingerprint));
-					memset(ck->fp, 0, sizeof(fingerprint));
-					ck->id = TEMPORARY_ID;
-				}
-				TIMER_END(1, jcr.read_chunk_time);
-				sync_queue_push(upgrade_chunk_queue, ck);
-				TIMER_BEGIN(1);
-			}
-			if (is_new && i == container_num - 1) {
-				if (con_buffer) {
-					free_container(con_buffer);
-				}
-				con_buffer = con;
-				break;
-			}
-			free_container(con);
-		}
-
-		ck = new_chunk(0);
-		ck->id = c->id;
-		SET_CHUNK(ck, CHUNK_CONTAINER_END);
-		if (is_new) {
-			SET_CHUNK(ck, CHUNK_REPROCESS);
-		}
-		TIMER_END(1, jcr.read_chunk_time);
-		sync_queue_push(upgrade_chunk_queue, ck);
-		TIMER_BEGIN(1);
-
-		free(conList);
-		// jcr.read_container_num++;
-			
-		TIMER_END(1, jcr.read_chunk_time);
-		sync_queue_push(upgrade_chunk_queue, c);
-
-	}
-
-	if (con_buffer) {
-		free_container(con_buffer);
-	}
-	sync_queue_term(upgrade_chunk_queue);
-	return NULL;
-}
-
 #define CONTAINER_BUFFER_SIZE 2
 void* read_container_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "read_container");
@@ -292,14 +177,6 @@ void *reorder_dedup_thread(void *arg) {
 			upgrade_index_lookup(c->cks + i);
 			assert(CHECK_CHUNK((c->cks + i), CHUNK_DUPLICATE));
 		}
-		
-		// if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)) {
-		// 	sync_queue_push(hash_queue, c);
-		// 	continue;
-		// }
-		// assert(jcr.container_processed);
-		// upgrade_index_lookup(c);
-		// assert(CHECK_CHUNK(c, CHUNK_DUPLICATE));
 		sync_queue_push(hash_queue, c);
 	}
 	sync_queue_term(hash_queue);
@@ -319,39 +196,6 @@ static void* pre_dedup_thread(void *arg) {
 			sync_queue_push(pre_dedup_queue, c);
 			continue;
 		}
-
-		/* Each duplicate chunk will be marked. */
-		pthread_mutex_lock(&upgrade_index_lock.mutex);
-		// while (upgrade_index_lookup(c) == 0) { // 目前永远是1, 所以不用管cond
-		// 	pthread_cond_wait(&upgrade_index_lock.cond, &upgrade_index_lock.mutex);
-		// }
-		if (destor.upgrade_level == UPGRADE_2D_RELATION
-			|| destor.upgrade_level == UPGRADE_2D_CONSTRAINED
-			|| destor.upgrade_level == UPGRADE_SIMILARITY) {
-			if (g_hash_table_lookup(upgrade_processing, &c->id)) {
-				// container正在处理中, 标记为duplicate, c->id为TEMPORARY_ID
-				// DEBUG("container processing: %ld", c->id);
-				SET_CHUNK(c, CHUNK_DUPLICATE);
-				SET_CHUNK(c, CHUNK_PROCESSING);
-				// c->id = TEMPORARY_ID;
-				jcr.sync_buffer_num++;
-			} else {
-				upgrade_index_lookup(c);
-				if(!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-					// 非重复块需要在下一阶段开始处理, 这个不能放到下面的阶段, 必须在同一锁内
-					int64_t *id = malloc(sizeof(int64_t));
-					*id = c->id;
-					g_hash_table_insert(upgrade_processing, id, "1");
-				}
-			}
-		} else if (destor.upgrade_level == UPGRADE_1D_RELATION) {
-			upgrade_index_lookup(c);
-		} else {
-			// Not Implemented
-			assert(0);
-		}
-		pthread_mutex_unlock(&upgrade_index_lock.mutex);
-		sync_queue_push(pre_dedup_queue, c);
 	}
 	sync_queue_term(pre_dedup_queue);
 	return NULL;
@@ -671,23 +515,9 @@ void do_update(int revision, char *path) {
 	switch (destor.upgrade_level)
 	{
 	case UPGRADE_NAIVE:
-	case UPGRADE_1D_RELATION:
 		pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
 		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 		pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
-		pthread_create(&hash_t, NULL, sha256_thread, NULL);
-		break;
-	case UPGRADE_2D_RELATION:
-	case UPGRADE_2D_CONSTRAINED:
-		pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
-		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
-		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
-		pthread_create(&hash_t, NULL, sha256_thread, NULL);
-		break;
-	case UPGRADE_SIMILARITY:
-		pthread_create(&recipe_t, NULL, read_similarity_recipe_thread, NULL);
-		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
-		pthread_create(&read_t, NULL, lru_get_chunk_thread_2D, NULL);
 		pthread_create(&hash_t, NULL, sha256_thread, NULL);
 		break;
 	default:
