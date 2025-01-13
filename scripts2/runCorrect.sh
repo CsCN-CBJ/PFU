@@ -4,8 +4,11 @@
 
 if [ $# -ne 1 ]; then
   echo "Error: Missing argument"
+  echo "Usage: $0 <upgrade_level>"
   exit 1
 fi
+
+set -ex
 
 testInit
 CONFIG=-p"log-level debug, simulation-level no"
@@ -17,7 +20,6 @@ remake
 
 resetAll
 genBasicData
-set -x
 
 # basic test
 # mkdir -p ~/destor/log/time
