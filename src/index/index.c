@@ -148,9 +148,6 @@ static void index_lookup_base(struct segment *s){
         if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
             continue;
 
-        index_lookup_chunk(c);
-        continue;
-
         index_overhead.index_lookup_requests++;
         /* First check it in the storage buffer */
         if(storage_buffer.container_buffer
@@ -229,33 +226,6 @@ static void index_lookup_base(struct segment *s){
 
 }
 
-void index_lookup_chunk(struct chunk *c){
-    if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
-        return;
-
-    index_overhead.index_lookup_requests++;
-    /* First check it in the storage buffer */
-    if(storage_buffer.container_buffer
-            && !CHECK_CHUNK(c, CHUNK_DUPLICATE)
-            && lookup_fingerprint_in_container(storage_buffer.container_buffer, &c->fp)){
-        index_overhead.storage_buffer_hits++;
-        c->id = get_container_id(storage_buffer.container_buffer);
-        SET_CHUNK(c, CHUNK_DUPLICATE);
-        SET_CHUNK(c, CHUNK_REWRITE_DENIED);
-    }
-
-    if (!CHECK_CHUNK(c, CHUNK_DUPLICATE)) {
-        /* Searching in fingerprint cache */
-        index_overhead.cache_lookup_requests++;
-        int64_t id = fingerprint_cache_lookup(&c->fp);
-        if(id != TEMPORARY_ID){
-            index_overhead.cache_hits++;
-            c->id = id;
-            SET_CHUNK(c, CHUNK_DUPLICATE);
-        }
-    }
-}
-
 extern void index_lookup_similarity_detection(struct segment *s);
 
 extern struct {
@@ -272,7 +242,7 @@ extern struct {
  * return 0: indicates the index buffer is full.
  */
 int index_lookup(struct segment* s) {
-    return 1;
+
     /* Ensure the next phase not be blocked. */
     if (index_lock.wait_threshold > 0
             && index_buffer.chunk_num >= index_lock.wait_threshold) {
@@ -302,17 +272,12 @@ int index_lookup(struct segment* s) {
  * For physical locality, this function is called for each written container.
  * For logical locality, this function is called for each written segment.
  */
-extern struct GhashTable* fpMap;
 void index_update(GHashTable *features, int64_t id){
     VERBOSE("Filter phase: update %d features", g_hash_table_size(features));
     GHashTableIter iter;
     gpointer key, value;
     g_hash_table_iter_init(&iter, features);
     while (g_hash_table_iter_next(&iter, &key, &value)) {
-        upgrade_index_value_t *v = malloc(sizeof(upgrade_index_value_t));
-        memcpy(v->fp, key, destor.index_key_size);
-        v->id = id;
-        g_hash_table_insert(fpMap, v->fp, v);
         index_overhead.kvstore_update_requests++;
         kvstore_update(key, id);
     }
@@ -371,7 +336,7 @@ void index_check_buffer(struct segment *s) {
  * Return 1 indicates buffer remains full.
  */
 int index_update_buffer(struct segment *s){
-    return 1;
+
 	GSequenceIter *iter = g_sequence_get_begin_iter(s->chunks);
 	GSequenceIter *end = g_sequence_get_end_iter(s->chunks);
     for (; iter != end; iter = g_sequence_iter_next(iter)) {

@@ -11,22 +11,18 @@
 #include "../recipe/recipestore.h"
 #include "../utils/lru_cache.h"
 #include "fingerprint_cache.h"
-#include "upgrade_cache.h"
 
 static struct lruCache* lru_queue;
-struct GhashTable* fpMap;
 /* defined in index.c */
 extern struct index_overhead index_overhead;
 
 void init_fingerprint_cache(){
 	switch(destor.index_category[1]){
 	case INDEX_CATEGORY_PHYSICAL_LOCALITY:
-		fpMap = g_hash_table_new_full(g_feature_hash, g_feature_equal, NULL, free);
 		lru_queue = new_lru_cache(destor.index_cache_size,
 				free_container_meta, lookup_fingerprint_in_container_meta);
 		break;
 	case INDEX_CATEGORY_LOGICAL_LOCALITY:
-		assert(0);
 		lru_queue = new_lru_cache(destor.index_cache_size,
 				free_segment_recipe, lookup_fingerprint_in_segment_recipe);
 		break;
@@ -39,10 +35,6 @@ void init_fingerprint_cache(){
 int64_t fingerprint_cache_lookup(fingerprint *fp){
 	switch(destor.index_category[1]){
 		case INDEX_CATEGORY_PHYSICAL_LOCALITY:{
-			upgrade_index_value_t* v = g_hash_table_lookup(fpMap, fp);
-			if (v)
-				return v->id;
-			break;
 			struct containerMeta* cm = lru_cache_lookup(lru_queue, fp);
 			if (cm)
 				return cm->id;

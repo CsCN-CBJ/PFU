@@ -153,13 +153,12 @@ static void* filter_thread(void *arg) {
          * If we find an early copy of the chunk in earlier segments,
          * has been rewritten,
          * the rewrite request for it will be denied. */
-        // index_check_buffer(s);
+        index_check_buffer(s);
 
     	GSequenceIter *iter = g_sequence_get_begin_iter(s->chunks);
     	GSequenceIter *end = g_sequence_get_end_iter(s->chunks);
         for (; iter != end; iter = g_sequence_iter_next(iter)) {
             c = g_sequence_get(iter);
-            index_lookup_chunk(c);
 
     		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
     			continue;
