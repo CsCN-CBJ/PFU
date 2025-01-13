@@ -2,6 +2,8 @@ General Information
 -------------------
 Destor is a platform for data deduplication evaluation.
 
+This project is a fork of the original Destor project. To see the modifications, please refer to the README2.md[README2.md] file.
+
 Features
 --------
 1. Container-based storage;
