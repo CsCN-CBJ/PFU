@@ -73,7 +73,7 @@ void destor_log(int level, const char *fmt, ...) {
 
 	// TODO: 可能影响性能
 	fprintf(log_fp, "%s\n", msg);
-	fflush(log_fp);
+	// fflush(log_fp);
 	fprintf(stdout, "%s\n", msg);
 	// fflush(stdout);
 }
@@ -370,16 +370,7 @@ int main(int argc, char **argv) {
 			fprintf(stderr, "A job id is required!\n");
 			usage();
 		}
-		if (argc > optind) {
-			path = sdsnew(argv[optind]);
-		} else {
-			fprintf(stderr, "A target directory is required!\n");
-			usage();
-		}
-
-		do_update(revision, path[0] == 0 ? 0 : path);
-
-		sdsfree(path);
+		do_update(revision, "/dev/null");
 		break;
 	case DESTOR_MAKE_TRACE: {
 		if (argc > optind) {

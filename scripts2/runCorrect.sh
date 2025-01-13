@@ -30,7 +30,7 @@ let ++RESTORE_ID
 
 # update test
 mkdir -p ${DST_DIR}${RESTORE_ID}
-./destor -u0 ${SRC_DIR} -i$1 "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
+./destor -u0 -i$1 "${CONFIG}" > ${LOG_DIR}/${RESTORE_ID}.log
 rm ${WORKING_DIR}/container.pool
 ./destor -n1 -p"simulation-level no" ${DST_DIR}${RESTORE_ID}
 let ++RESTORE_ID

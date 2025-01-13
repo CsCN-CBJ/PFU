@@ -19,7 +19,6 @@ LOG_DIR=${TEST_DIR}/log
 CONFIG=-p"working-directory $WORKING_DIR, $3"
 
 # update test
-mkdir -p ./data/
 rm -f ${WORKING_DIR}/container.pool_new
 rm -f ${WORKING_DIR}/recipes/bv1*
 rm -f ${WORKING_DIR}/kvstore_file
@@ -28,7 +27,7 @@ rm -f ${WORKING_DIR}/kvstore_file
 cat ~/.ssh/passwd | sudo -S ./flush.sh
 sleep 20
 
-./destor-cbj-test-special -u0 /dev/null -i"$LEVEL" "${CONFIG}" > ${LOG_DIR}/$1.log
+./destor-cbj-test-special -u0 -i"$LEVEL" "${CONFIG}" > ${LOG_DIR}/$1.log
 
 rm -f ${WORKING_DIR}/container.pool_new
 rm -f ${WORKING_DIR}/recipes/bv1*
