@@ -46,26 +46,6 @@ void close_upgrade_index() {
 /**
  * 1D
 */
-static void upgrade_index_update1(GSequence *chunks, int64_t id) {
-    int length = g_sequence_get_length(chunks);
-    VERBOSE("Filter phase: update1 upgrade index %d features", length);
-    upgrade_index_value_t v;
-    GSequenceIter *iter = g_sequence_get_begin_iter(chunks);
-    GSequenceIter *end = g_sequence_get_end_iter(chunks);
-    for (; iter != end; iter = g_sequence_iter_next(iter)) {
-        struct chunk* c = g_sequence_get(iter);        
-        upgrade_index_overhead.kvstore_update_requests++;
-        v.id = id;
-        memcpy(&v.fp, &c->fp, sizeof(fingerprint));
-        // setDB(DB_UPGRADE, &c->old_fp, sizeof(fingerprint), &v, sizeof(upgrade_index_value_t));
-    }
-}
-
-void upgrade_index_update(GSequence *chunks, int64_t id) {
-    assert(destor.upgrade_level == UPGRADE_1D_RELATION);
-    upgrade_index_update1(chunks, id);
-}
-
 void upgrade_index_lookup_1D(struct chunk *c){
     
     if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
@@ -163,11 +143,7 @@ void _upgrade_dedup_external(struct chunk *c, struct index_overhead *stats) {
 
     stats->kvstore_lookup_requests++;
     int ret;
-    if (destor.upgrade_level == UPGRADE_1D_CONTAINER || destor.upgrade_level == UPGRADE_1D_CONTAINER_SIMILARITY) {
-        ret = upgrade_external_cache_prefetch_rockfile(c->id, &c->old_fp);
-    } else {
-        ret = upgrade_external_cache_prefetch(c->id);
-    }
+    ret = upgrade_external_cache_prefetch(c->id);
 
     if (ret) {
         stats->kvstore_hits++;
@@ -179,7 +155,7 @@ void _upgrade_dedup_external(struct chunk *c, struct index_overhead *stats) {
     }
 }
 
-void upgrade_index_lookup_2D(struct chunk *c, struct index_overhead *stats, int constrained) {
+void upgrade_index_lookup_2D(struct chunk *c, struct index_overhead *stats) {
     if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END))
         return;
 
@@ -218,10 +194,8 @@ int upgrade_index_lookup(struct chunk* c) {
 
     if (destor.upgrade_relation_level == 1) {
         upgrade_index_lookup_1D(c);
-    } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
-        upgrade_index_lookup_2D(c, &upgrade_index_overhead, 0);
     } else if (destor.upgrade_relation_level == 2) {
-        upgrade_index_lookup_2D(c, &upgrade_index_overhead, 1);
+        upgrade_index_lookup_2D(c, &upgrade_index_overhead);
     } else {
         assert(0);
     }

@@ -60,40 +60,17 @@ void (*upgrade_kvstore_update)(char *key, void* value);
 
 void init_kvstore() {
 
+	if (job == DESTOR_BACKUP) destor.index_key_value_store = INDEX_KEY_VALUE_HTABLE;
+
     switch(destor.index_key_value_store){
     	case INDEX_KEY_VALUE_HTABLE:
-    		// init_kvstore_mysql();
-			// if (destor.upgrade_level == UPGRADE_1D_RELATION) {
-			// 	init_upgrade_kvstore_htable(destor.index_key_size, sizeof(upgrade_index_value_t));
-			// } else if (destor.upgrade_level == UPGRADE_2D_RELATION) {
-			// 	init_upgrade_kvstore_htable(sizeof(int64_t), sizeof(int64_t));
-			// }
 			init_kvstore_htable();
 
     		close_kvstore = close_kvstore_htable;
     		kvstore_lookup = kvstore_htable_lookup;
     		kvstore_update = kvstore_htable_update;
-			// kvstore_multi_update = kvstore_mysql_multi_update;
     		kvstore_delete = kvstore_htable_delete;
-
-			// close_upgrade_kvstore = close_upgrade_kvstore_htable;
-			// upgrade_kvstore_lookup = upgrade_kvstore_htable_lookup;
-			// upgrade_kvstore_update = upgrade_kvstore_htable_update;
-
     		break;
-		// case INDEX_KEY_VALUE_MYSQL:
-		// 	init_kvstore_mysql();
-		// 	close_kvstore = close_kvstore_mysql;
-		// 	kvstore_lookup = kvstore_mysql_lookup;
-		// 	kvstore_update = kvstore_mysql_update;
-		// 	kvstore_delete = kvstore_mysql_delete;
-		// case INDEX_KEY_VALUE_ROR:
-		// 	init_kvstore_ror();
-		// 	close_kvstore = close_kvstore_ror;
-		// 	kvstore_lookup = kvstore_ror_lookup;
-		// 	kvstore_update = kvstore_ror_update;
-		// 	kvstore_delete = kvstore_ror_delete;
-    	// 	break;
 		case INDEX_KEY_VALUE_FILE:
 			init_kvstore_file();
 			close_kvstore = close_kvstore_file;

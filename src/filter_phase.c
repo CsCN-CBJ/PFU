@@ -226,14 +226,6 @@ static void* filter_thread(void *arg) {
                         		g_sequence_get_length(storage_buffer.chunks));
                         index_update(features, get_container_id(storage_buffer.container_buffer));
 
-                        // do_update index
-                        if (job == DESTOR_UPDATE && destor.upgrade_level != UPGRADE_NAIVE) {
-                            pthread_mutex_lock(&upgrade_index_lock.mutex);
-                            assert(0);
-                            // upgrade_index_update(storage_buffer.chunks, get_container_id(storage_buffer.container_buffer));
-                            pthread_mutex_unlock(&upgrade_index_lock.mutex);
-                        }
-
                         g_hash_table_destroy(features);
                         g_sequence_free(storage_buffer.chunks);
                         storage_buffer.chunks = g_sequence_new(free_chunk);
@@ -405,13 +397,6 @@ static void* filter_thread(void *arg) {
         	GHashTable *features = sampling(storage_buffer.chunks,
         			g_sequence_get_length(storage_buffer.chunks));
         	index_update(features, get_container_id(storage_buffer.container_buffer));
-
-            // do_update index
-            if (job == DESTOR_UPDATE && destor.upgrade_level != UPGRADE_NAIVE) {
-                pthread_mutex_lock(&upgrade_index_lock.mutex);
-                upgrade_index_update(storage_buffer.chunks, get_container_id(storage_buffer.container_buffer));
-                pthread_mutex_unlock(&upgrade_index_lock.mutex);
-            }
 
         	g_hash_table_destroy(features);
         	g_sequence_free(storage_buffer.chunks);
@@ -590,8 +575,7 @@ void start_filter_phase() {
 
 void stop_filter_phase() {
     pthread_join(filter_t, NULL);
-    if (destor.upgrade_level == UPGRADE_NAIVE || destor.upgrade_level == UPGRADE_1D_RELATION)
-        close_har();
+    close_har();
 	NOTICE("filter phase stops successfully!");
 
 }

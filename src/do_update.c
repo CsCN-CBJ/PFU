@@ -148,26 +148,6 @@ void* read_container_thread(void *arg) {
 	return NULL;
 }
 
-void *reorder_read_thread(void *arg) {
-	pthread_t hash_t;
-	TIMER_DECLARE(1);
-	TIMER_BEGIN(1);
-	pthread_create(&hash_t, NULL, sha256_thread, NULL);
-	read_container_thread(NULL);
-	pthread_join(hash_t, NULL);
-	TIMER_END(1, jcr.pre_process_container_time);
-	jcr.container_filter_time = jcr.filter_time;
-	jcr.filter_time = 0;
-	jcr.container_processed = 1;
-
-	if (destor.upgrade_level == UPGRADE_SIMILARITY) {
-		read_similarity_recipe_thread(NULL);
-	} else {
-		read_recipe_thread(NULL);
-	}
-	return NULL;
-}
-
 void *reorder_dedup_thread(void *arg) {
 	pthread_setname_np(pthread_self(), "reorder_dedup");
 	recipeUnit_t *c;
@@ -310,25 +290,11 @@ static void pre_process_args() {
 	destor.upgrade_cdc_level = UPGRADE_CDC_CONTAINER;
 	switch (destor.upgrade_level) {
 	case UPGRADE_NAIVE:
-	case UPGRADE_1D_RELATION:
-	case UPGRADE_2D_RELATION:
 		destor.external_cache_size = 0; // no limit
 		break;
-	case UPGRADE_2D_CONSTRAINED:
-		break;
-	case UPGRADE_SIMILARITY:
-		destor.upgrade_similarity = 1;
-		break;
-	case UPGRADE_SIMILARITY_PLUS:
-		destor.upgrade_similarity = 1;
-		destor.upgrade_do_split_merge = 1;
 	case UPGRADE_2D_REORDER:
-		destor.upgrade_level = UPGRADE_2D_CONSTRAINED;
+		destor.upgrade_relation_level = 2;
 		destor.upgrade_reorder = 1;
-		break;
-	case UPGRADE_SIMILARITY_REORDER:
-		destor.upgrade_reorder = 1;
-		destor.upgrade_similarity = 1;
 		break;
 	case UPGRADE_SIMILARITY_PLUS_REORDER:
 		destor.upgrade_reorder = 1;
@@ -339,31 +305,6 @@ static void pre_process_args() {
 		assert(destor.upgrade_external_store == INDEX_KEY_VALUE_ROCKSDB);
 		destor.upgrade_reorder = 1;
 		destor.upgrade_relation_level = 1;
-		break;
-	case UPGRADE_1D_SIMILARITY:
-		destor.upgrade_reorder = 1;
-		destor.upgrade_similarity = 1;
-		destor.upgrade_relation_level = 1;
-		destor.upgrade_do_split_merge = 1;
-		destor.upgrade_cdc_level = UPGRADE_CDC_CHUNK;
-		// destor.index_cache_size *= 900;
-		destor.CDC_max_size *= 900;
-		destor.CDC_exp_size *= 900;
-		destor.CDC_min_size *= 900;
-		break;
-	case UPGRADE_1D_CONTAINER:
-		destor.upgrade_reorder = 1;
-		destor.upgrade_relation_level = 2;
-		break;
-	case UPGRADE_1D_CONTAINER_SIMILARITY:
-		destor.upgrade_reorder = 1;
-		destor.upgrade_similarity = 1;
-		destor.upgrade_do_split_merge = 1;
-		destor.upgrade_cdc_level = UPGRADE_CDC_CHUNK;
-		destor.upgrade_relation_level = 2;
-		destor.CDC_max_size *= 100;
-		destor.CDC_exp_size *= 100;
-		destor.CDC_min_size *= 100;
 		break;
 	default:
 		assert(0);
@@ -524,7 +465,7 @@ void do_update(int revision, char *path) {
 		assert(0);
 	}
 
-	if (destor.upgrade_level == UPGRADE_NAIVE || destor.upgrade_level == UPGRADE_1D_RELATION) {
+	if (destor.upgrade_level == UPGRADE_NAIVE) {
 		start_dedup_phase();
 		start_rewrite_phase();
 	}
@@ -550,7 +491,7 @@ void do_update(int revision, char *path) {
 	pthread_join(pre_dedup_t, NULL);
 	pthread_join(read_t, NULL);
 	pthread_join(hash_t, NULL);
-	if (destor.upgrade_level == UPGRADE_NAIVE || destor.upgrade_level == UPGRADE_1D_RELATION) {
+	if (destor.upgrade_level == UPGRADE_NAIVE) {
 		stop_dedup_phase();
 		stop_rewrite_phase();
 	}
