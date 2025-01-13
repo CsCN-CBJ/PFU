@@ -172,7 +172,7 @@ static void* pre_dedup_thread(void *arg) {
 		}
 
 		if (CHECK_CHUNK(c, CHUNK_FILE_START) || CHECK_CHUNK(c, CHUNK_FILE_END)
-			|| destor.upgrade_level == UPGRADE_NAIVE) {
+			|| destor.upgrade_level == UPGRADE_LFU) {
 			sync_queue_push(pre_dedup_queue, c);
 			continue;
 		}
@@ -289,22 +289,22 @@ static void pre_process_args() {
 	destor.upgrade_relation_level = 2;
 	destor.upgrade_cdc_level = UPGRADE_CDC_CONTAINER;
 	switch (destor.upgrade_level) {
-	case UPGRADE_NAIVE:
+	case UPGRADE_LFU:
 		destor.external_cache_size = 0; // no limit
 		break;
-	case UPGRADE_2D_REORDER:
-		destor.upgrade_relation_level = 2;
-		destor.upgrade_reorder = 1;
-		break;
-	case UPGRADE_SIMILARITY_PLUS_REORDER:
-		destor.upgrade_reorder = 1;
-		destor.upgrade_similarity = 1;
-		destor.upgrade_do_split_merge = 1;
-		break;
-	case UPGRADE_1D_REORDER:
+	case UPGRADE_PFU:
 		assert(destor.upgrade_external_store == INDEX_KEY_VALUE_ROCKSDB);
 		destor.upgrade_reorder = 1;
 		destor.upgrade_relation_level = 1;
+		break;
+	case UPGRADE_CONPFU:
+		destor.upgrade_relation_level = 2;
+		destor.upgrade_reorder = 1;
+		break;
+	case UPGRADE_SIMPFU:
+		destor.upgrade_reorder = 1;
+		destor.upgrade_similarity = 1;
+		destor.upgrade_do_split_merge = 1;
 		break;
 	default:
 		assert(0);
@@ -455,7 +455,7 @@ void do_update(int revision, char *path) {
 	pthread_t recipe_t, read_t, pre_dedup_t, hash_t;
 	switch (destor.upgrade_level)
 	{
-	case UPGRADE_NAIVE:
+	case UPGRADE_LFU:
 		pthread_create(&recipe_t, NULL, read_recipe_thread, NULL);
 		pthread_create(&pre_dedup_t, NULL, pre_dedup_thread, NULL);
 		pthread_create(&read_t, NULL, lru_get_chunk_thread, NULL);
@@ -465,7 +465,7 @@ void do_update(int revision, char *path) {
 		assert(0);
 	}
 
-	if (destor.upgrade_level == UPGRADE_NAIVE) {
+	if (destor.upgrade_level == UPGRADE_LFU) {
 		start_dedup_phase();
 		start_rewrite_phase();
 	}
@@ -491,7 +491,7 @@ void do_update(int revision, char *path) {
 	pthread_join(pre_dedup_t, NULL);
 	pthread_join(read_t, NULL);
 	pthread_join(hash_t, NULL);
-	if (destor.upgrade_level == UPGRADE_NAIVE) {
+	if (destor.upgrade_level == UPGRADE_LFU) {
 		stop_dedup_phase();
 		stop_rewrite_phase();
 	}

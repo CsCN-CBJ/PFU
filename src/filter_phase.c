@@ -566,7 +566,7 @@ void start_filter_phase() {
     // init_restore_aware();
 
     if (job == DESTOR_UPDATE) {
-        assert(destor.upgrade_level == UPGRADE_NAIVE);
+        assert(destor.upgrade_level == UPGRADE_LFU);
         pthread_create(&filter_t, NULL, filter_thread, NULL);
     } else {
         pthread_create(&filter_t, NULL, filter_thread, NULL);

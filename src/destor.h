@@ -69,10 +69,10 @@ int job;
 #define DESTOR_NEW_RESTORE 6
 
 /* upgrade level */
-#define UPGRADE_NAIVE 0  // LFU
-#define UPGRADE_1D_REORDER 1  // PFU
-#define UPGRADE_2D_REORDER 2  // Con-PFU
-#define UPGRADE_SIMILARITY_PLUS_REORDER 3  // Sim-PFU
+#define UPGRADE_LFU 0  // LFU
+#define UPGRADE_PFU 1  // PFU
+#define UPGRADE_CONPFU 2  // Con-PFU
+#define UPGRADE_SIMPFU 3  // Sim-PFU
 
 #define UPGRADE_CDC_CHUNK 0
 #define UPGRADE_CDC_CONTAINER 1
