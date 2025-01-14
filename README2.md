@@ -26,3 +26,5 @@ Warnings
 1. ONLY support one backup and one upgrade: version 0 corresponds to the backup, and version 1 corresponds to the upgrade. You can restore data from both versions, but use different commands(destor -r0 and destor -n1). Other commands are not supported.
 
 2. The backup task is forced to use the origin htable kvstore.
+
+3. File backupversion.count is disabled, see recipestore.c:22

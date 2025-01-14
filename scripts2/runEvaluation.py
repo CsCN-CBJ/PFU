@@ -90,7 +90,7 @@ def runEvaluation():
     unique = matchUniqueSize(f"{TEST_DIR}/working/0.log")
     direct = 0
 
-    for level in [3]:
+    for level in [1, 2, 3]:
         args = getDefaultArgs()
         args.direct_reads = direct
         args.simulation = "no"
@@ -98,7 +98,7 @@ def runEvaluation():
         # os.system(f"rm -rf {TEST_DIR}/working/upgrade_external_cache")
         # runCommand(level, args, f"{level}_container.log")
         args.upgrade_phase = 0
-        for ratio in [100]:
+        for ratio in ALL_RATIOS:
             os.system(f"rm -rf {TEST_DIR}/working/rocksdb0")
             os.system(f"rm -rf {TEST_DIR}/working/upgrade_external_cache")
             cacheSize = getCacheSize(unique, ratio)
