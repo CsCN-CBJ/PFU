@@ -29,30 +29,25 @@ def matchUniqueInt(reStr: str, string: str):
 
 @dataclass
 class Arguments:
-    upgrade_phase: int
     cache_memory: int
-    # cache_external: int
     cdc_max_size: int
     cdc_exp_size: int
     cdc_min_size: int
-    index_type: str
-    external_type: str
     direct_reads: int
     simulation: str
-    fake_containers: int
 
     def getConfigStr(self) -> str:
-        return f"upgrade-phase {self.upgrade_phase}, " + \
+        return f"upgrade-phase 0, " + \
                 f"fingerprint-index-cache-size {self.cache_memory}, " + \
                 f"fingerprint-external-cache-size 0, " + \
                 f"recipe-cdc-max-size {self.cdc_max_size}, " + \
                 f"recipe-cdc-exp-size {self.cdc_exp_size}, " + \
                 f"recipe-cdc-min-size {self.cdc_min_size}, " + \
-                f"fingerprint-index-key-value {self.index_type}, " + \
-                f"upgrade-external-store {self.external_type}, " + \
+                f"fingerprint-index-key-value file, " + \
+                f"upgrade-external-store rocksdb, " + \
                 f"direct-reads {self.direct_reads}, " + \
                 f"simulation-level {self.simulation}, " + \
-                f"fake-containers {self.fake_containers}"
+                f"fake-containers 0"
 
 def runCommand(level: int, args: Arguments, logName: str):
     ret = os.system(f"bash runEvaluation.sh {level} {TEST_DIR} \"{args.getConfigStr()}\"")
@@ -71,16 +66,12 @@ def getCacheSize(uniqueSize: int, ratio: int) -> int:
     return int(uniqueSize * 0.0025 * ratio / 100)
 
 def getDefaultArgs():
-    return Arguments(upgrade_phase=1,
-                     cache_memory=10000,
+    return Arguments(cache_memory=10000,
                      cdc_max_size=400,
                      cdc_exp_size=200,
                      cdc_min_size=100,
-                     index_type="file",
-                     external_type="rocksdb",
                      direct_reads=0,
                      simulation="no",
-                     fake_containers=0,
                     )
 
 def runEvaluation():
@@ -89,24 +80,37 @@ def runEvaluation():
     os.system("bash resetEvaluation.sh")
     unique = matchUniqueSize(f"{TEST_DIR}/working/0.log")
     direct = 0
-
-    for level in [1, 2, 3]:
+    for level in [0, 1, 2, 3]:
         args = getDefaultArgs()
         args.direct_reads = direct
         args.simulation = "no"
-        # os.system(f"rm -rf {TEST_DIR}/working/rocksdb0")
-        # os.system(f"rm -rf {TEST_DIR}/working/upgrade_external_cache")
-        # runCommand(level, args, f"{level}_container.log")
-        args.upgrade_phase = 0
         for ratio in ALL_RATIOS:
             os.system(f"rm -rf {TEST_DIR}/working/rocksdb0")
             os.system(f"rm -rf {TEST_DIR}/working/upgrade_external_cache")
             cacheSize = getCacheSize(unique, ratio)
             args.cache_memory = cacheSize
-            cacheSize /= 60 * 900
+            cacheSize /= 60 * 1000
             args.cdc_max_size = int(cacheSize)
             args.cdc_exp_size = int(cacheSize * 0.75)
             args.cdc_min_size = int(cacheSize * 0.5)
             runCommand(level, args, f"{level}_{direct}_{ratio}.log")
+
+def runTrace():
+    global TEST_DIR
+    TEST_DIR = "/home/cbj/trace"
+    os.system("bash resetEvaluation.sh")
+    unique = matchUniqueSize(f"{TEST_DIR}/working/0.log")
+    for level in [0, 1, 2, 3]:
+        args = getDefaultArgs()
+        args.direct_reads = 0
+        args.simulation = "all"
+        for ratio in ALL_RATIOS:
+            cacheSize = getCacheSize(unique, ratio)
+            args.cache_memory = cacheSize
+            cacheSize /= 60 * 1000
+            args.cdc_max_size = int(cacheSize)
+            args.cdc_exp_size = int(cacheSize * 0.75)
+            args.cdc_min_size = int(cacheSize * 0.5)
+            runCommand(level, args, f"{level}_trace_{ratio}.log")
 
 runEvaluation()
