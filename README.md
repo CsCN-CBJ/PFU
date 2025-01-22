@@ -1,85 +1,18 @@
-General Information
--------------------
-Destor is a platform for data deduplication evaluation.
 
-This project is a fork of the original Destor project. To see the modifications, please refer to the README2.md[README2.md] file.
+This repository contains the source code for the paper:
+
+##### Cai Deng, Boju Chen
+### The Logic of Fingerprint Upgrade in Deduplicated Storage
+
+
+This project supports the feature of fingerprint upgrade, specifically upgrading 20-byte SHA-1 fingerprints to 32-byte SHA-256 fingerprints.
+
+Our implementation of the naïve and the deduplication-aware index is based on the Destor open-source storage system: https://github.com/fomy/destor
 
 Features
 --------
-1. Container-based storage;
-2. Chunk-level pipeline;
-3. Fixed-sized chunking, Content-Defined Chunking (CDC) and an approximate file-level deduplication;
-4. A variety of fingerprint indexes, including DDFS, Extreme Binning, Sparse Index, SiLo, etc.
-5. A variety of rewriting algorithms, including CFL, CBR, CAP, HAR etc.
-6. A variety of restore algorithms, including LRU, optimal replacement algorithm, rolling forward assembly.
-
-Related papers
---------------
-1. The chunking algorithm:
-    > a) A Low-bandwidth Network File System @ SOSP'02. 
-    >
-    > b) A Framework for Analyzing and Improving Content-Based Chunking Algorithms @ HP technical report.
-    >
-    > c) AE: An Asymmetric Extremum Content Defined Chunking Algorithm for Fast and Bandwidth-Efficient Data Deduplication @ IEEE Infocom'15.
-
-2. The fingerprint index:
-    > a) Avoiding the Disk Bottleneck in the Data Domain Deduplication File System @ FAST'08.
-    >
-    > b) Sparse Indexing: Large Scale, Inline Deduplication Using Sampling and Locality @ FAST'09.
-    >
-    > c) Extreme Binning: Scalable, Parallel Deduplication for Chunk-based File Backup @ MASCOTS'09.
-    >
-    > d) SiLo: A Similarity-Locality based Near-Exact Deduplicatin Scheme with Low RAM Overhead and High Throughput @ USENIX ATC'11.
-    >
-    > e) Building a High-Performance Deduplication System @ USENIX ATC'11.
-    >
-    > f) Block Locality Caching for Data Deduplication @ SYSTOR'13.
-    >
-    > g) The design of a similarity based deduplication system @ SYSTOR'09.
-
-3. The fragmentation:
-    > a) Chunk Fragmentation Level: An Effective Indicator for Read Performance Degradation in Deduplication Storage @ HPCC'11.
-    >
-    > b) Assuring Demanded Read Performance of Data Deduplication Storage with Backup Datasets @ MASCOTS'12. 
-    >
-    > c) Reducing impact of data fragmentation caused by in-line deduplication @ SYSTOR'12.
-    >
-    > d) Improving Restore Speed for Backup Systems that Use Inline Chunk-Based Deduplication @ FAST'13.
-    >
-    > e) Accelerating Restore and Garbage Collection in Deduplication-based Backup Systems via Exploiting Historical Information @ USENIX ATC'14.
-    >
-    > f) Reducing Fragmentation for In-line Deduplication Backup Storage via Exploiting Historical Information and Cache Knowledge @ IEEE TPDS.
-
-4. The restore algorithm:
-    > a) A Study of Replacement Algorithms for a Virtual-Storage Computer @ IBM Systems Journal'1966.
-    >
-    > b) Improving Restore Speed for Backup Systems that Use Inline Chunk-Based Deduplication @ FAST'13.
-    >
-    > c) Accelerating Restore and Garbage Collection in Deduplication-based Backup Systems via Exploiting Historical Information @ USENIX ATC'14.
-
-5. Garbage collection:
-    > a) Building a High-Performance Deduplication System @ USENIX ATC'11.
-    >
-    > b) Cumulus: Filesystem Backup to the Cloud @ FAST'09.
-    >
-    > c) Accelerating Restore and Garbage Collection in Deduplication-based Backup Systems via Exploiting Historical Information @ USENIX ATC'14.
-
-The Destor paper
-----------------------
-**[FAST'15] Design Tradeoffs for Data Deduplication Performance in Backup Workloads.**
-
-This paper presents the parameter space in data deduplication that guides the design of Destor.
-It then gives the overall architecture and the backup/restore pipeline in Destor.
-Finally, we did an entensive experimentation via Destor to find reasonable solutions.
-You can find the paper in doc directory.
-
-Recent publications using Destor
------------------------------
-1. **Min Fu**, Dan Feng, Yu Hua, Xubin He, Zuoning Chen, Wen Xia, Fangting Huang, and Qing Liu. *Accelerating Restore and Garbage Collection in Deduplication-based Backup Systems via Exploiting Historical Information* @ USENIX ATC'14.
-2. Jian Liu, Yunpeng Chai, Xiao Qin, and Yuan Xiao. *PLC-Cache: Endurable SSD Cache for Deduplication-based Primary Storage* @ MSST'14.
-3. Yucheng Zhang et al. *AE: An Asymmetric Extremum Content Defined Chunking Algorithm for Fast and Bandwidth-Efficient Data Deduplication* @ IEEE Infocom'15.
-4. **Min Fu** et al. *Reducing Fragmentation for In-line Deduplication Backup Storage via Exploiting Historical Information and Cache Knowledge* @ IEEE TPDS.
-
+1. LFU, PFU, Con-PFU, Sim-PFU upgrade algorithms;
+2. A new restore algorithm for the upgraded fingerprints;
 
 Environment
 -----------
@@ -87,8 +20,9 @@ Linux 64bit.
 
 Dependencies
 ------------
-1. libssl-dev is required to calculate sha-1 digest;
-2. GLib 2.32 or later version 
+1. libssl-dev is required to calculate sha-1 and sha-256 digest;
+2. lib rocksdb is required for the external key-value store;
+3. GLib 2.32 or later version 
 
    > libglib.so and glib.h may not be found when you first install it.
 
@@ -96,13 +30,15 @@ Dependencies
 
    > Also a link named libglib.so should be created in "/usr/local/lib".
 
-3. Makefile is automatically generated by GNU autoconf and automake.
+4. Makefile is automatically generated by GNU autoconf and automake.
 
-INSTALL
+Compile
 -------
 If all dependencies are installed,
 compiling destor is straightforward:
 
+>autoreconf -ivf
+>
 >./configure
 >
 >make
@@ -116,54 +52,77 @@ To uninstall destor, run
 Running
 -------
 If compile and install are successful, the executable file, destor, should have been moved to /usr/local/bin by default.
-You can create a config file, destor.config, in where you run destor.
+You should create a directory named `log` and a config file named `destor.config`, in where you run destor.
 A sample destor.config is in the project directory.
 
-NOTE: run **rebuild** script before destor to prepare working directory and clear data.
+### backup
 
-destor can run as follows:
+The following command creates a deduplicated backup from a given dataset path:
 
-1. start a backup task,
-   > destor /path/to/data -p"a line as in config file"
+`destor /path/to/data -p"a line as in config file"`
 
-2. start a restore task,
-   > destor -r<jobid> /path/to/restore -p"a line as in config file"
+`/path/to/data` can be a file or a directory. If it is a directory, the entire directory will be recursively backed up in the backup directory defined in destor.config. If it is a file, all lines in the file will be considered as paths of files to be backed up.
 
-3. show the current statistics of system,
-   > destor -s
+### sha-1 restore
 
-4. show help
-   > destor -h
+to restore the data from the backup, run
 
-5. make a trace
-   > destor -t /path/to/data
+`destor -r0 /path/to/restore -p"a line as in config file"`
+
+### upgrade fingerprints
+
+to upgrade fingerprints from sha-1 to sha-256, run
+
+`destor -u0 -i<upgrade_method> -p"a line as in config file"`
+
+upgrade methods:
+- 0: LFU
+- 1: PFU
+- 2: Con-PFU
+- 3: Sim-PFU
+
+### sha-256 restore
+
+to restore the data from the upgraded (sha-256) fingerprints, run
+
+`destor -n1 /path/to/restore -p"a line as in config file"`
 
 Configuration
 -------------
-A sample configuration is shown in destor.conf
+When destor is initialized, it reads a configuration file named in a fixed name, `destor.config`, which contains lines in the following format:
 
-To find what the parameters in destor.conf exactly mean and how to configure an existing solution (such as DDFS), please read the paper **Design Tradeoffs for Data Deduplication Performance in Backup Workloads** in doc/.
-The parameter space is based on the taxonomy proposed in the paper.
-(Note: The paper is somewhat difficult to follow. I am sorry about that, still working on improving the readability.)
+```
+<configuration_variable> <value>
+```
 
-Bugs
+For example:
+```
+working-directory "/home/cbj/destor_working_directory"
+direct-reads 1
+simulation-level no
+```
+
+The following values are used to configure parameters while upgrading fingerprints:
+
+* working-directory: path to a directory which will contain the deduplicated backups.
+* fingerprint-index-cache-size: in-memory cache size in **bytes** for the fingerprint index.
+* direct-reads: 1 for direct I/O reads, 0 for normal reads.
+* simulation-level: "no" for regular files, "all" for trace files.
+* recipe-cdc-max/exp/min-size: the maximum/expected/minimum size (number of chunks) of a logic recipe after dividing large recipes into sub-recipes through CDC.
+
+Warnings
 ----
-1. If the running destor is crashed artificially or unexpectedly, data consistency is not guaranted and you'd better run rebuild script.
+1. ONLY support one backup and one upgrade: version 0 corresponds to the backup, and version 1 corresponds to the upgrade. You can restore data from both versions, but use different commands(destor -r0 and destor -n1). Other commands in the origin destor are not supported.
 
-2. Do NOT support concurrent backup/restore.
+2. The backup task is forced to use the origin htable kvstore, so it does not represent the actual speed.
 
-3. If working path in destor.config is modified, the rebuild script must be modified too.
-
-4. CMA assumes the backups are deleted in FIFO order.
-    > If you set a backup-retention-time, the expired backup is deleted automatically.
+3. File backupversion.count is disabled, see recipestore.c:22
 
 Author
 ------
-Min Fu
+Boju Chen
 
-Email : fumin at hust.edu.cn
+Email : cbj.vip@qq.com
 
-Blog : fumin.hustbackup.cn
-
-(Feel free to contact me if you have any questions about Destor.
+(Feel free to contact me if you have any questions about PFU.
 I would appreciate bug report.)
